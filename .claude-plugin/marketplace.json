@@ -4,11 +4,11 @@
     "name": "HHong214"
   },
   "metadata": {
-    "description": "The wallpaper mod, read from this folder."
+    "description": "CWallpaper: moving wallpapers for the Claude desktop app."
   },
   "plugins": [
     {
-      "name": "wallpaper",
+      "name": "CWallpaper",
       "source": "./"
     }
   ]

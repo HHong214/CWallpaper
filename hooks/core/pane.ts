@@ -88,6 +88,9 @@ function rows(settings: Settings, wallpapers: readonly Wallpaper[]): PaneRow[] {
   if (w.kind === 'svg' && s.fps === true) {
     out.push({ kind: 'note', text: 'The frame rate of this wallpaper cannot be measured: the app animates it itself, not on the GPU.' })
   }
+  if (w.kind === 'shader' && s.fps === true) {
+    out.push({ kind: 'note', text: 'Drawn at the top left of the chat.' })
+  }
   const own = Array.isArray(w.options) ? w.options.filter(o => o && typeof o.key === 'string') : []
   out.push({ kind: 'heading', text: own.length > 0 ? w.label : `${w.label}: no settings of its own` })
   const values = (s.own && s.own[w.id]) || {}

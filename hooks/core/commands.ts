@@ -1,4 +1,4 @@
-// `/wallpaper ...` text to one action, and the texts the command answers with.
+// `/cwallpaper ...` text to one action, and the texts the command answers with.
 // Pure: no engine import, no clock, no store, never throws; junk in gives the
 // default out. The mod (register.tsx) carries the action out.
 import { COMMON, manifestKey, readValue } from './options.ts'
@@ -13,7 +13,7 @@ export type Action =
   | { kind: 'set'; key: string; value: OptionValue; also?: Action | Action[] }
   | { kind: 'error'; message: string }
 
-const HELP_POINTER = '/wallpaper help lists every command.'
+const HELP_POINTER = '/cwallpaper help lists every command.'
 const REMOVED =
   'Pictures and videos of your own were removed from the wallpaper mod: wallpapers are now made in the repository, as code.'
 
@@ -60,7 +60,7 @@ function parse(text: unknown, settings: Settings, wallpapers: readonly Wallpaper
   const rest = words.slice(1).map(w => w.toLowerCase())
   const all = list(wallpapers)
   const isOn = settings && typeof settings === 'object' ? settings.on !== false : true
-  const unknown = (): Action => error(`There is no "${words.join(' ').slice(0, 80)}" for /wallpaper. ${HELP_POINTER}`)
+  const unknown = (): Action => error(`There is no "${words.join(' ').slice(0, 80)}" for /cwallpaper. ${HELP_POINTER}`)
 
   if (verb === '') return { kind: 'status' }
   if (verb === 'picture' || verb === 'video' || verb === 'image') return error(REMOVED)
@@ -71,7 +71,7 @@ function parse(text: unknown, settings: Settings, wallpapers: readonly Wallpaper
   if (['motion', 'clear', 'blur', 'dim', 'colors', 'fps'].includes(verb)) {
     const o = common(verb)
     const value = parseValue(o, rest)
-    return value === undefined ? error(`${verb} takes ${takes(o)}: /wallpaper ${verb} <${o.type === 'number' ? `${o.min}-${o.max}` : (o.type === 'boolean' ? ['on', 'off'] : [...(o.choices ?? [])]).join('|')}>.`) : set(verb, value)
+    return value === undefined ? error(`${verb} takes ${takes(o)}: /cwallpaper ${verb} <${o.type === 'number' ? `${o.min}-${o.max}` : (o.type === 'boolean' ? ['on', 'off'] : [...(o.choices ?? [])]).join('|')}>.`) : set(verb, value)
   }
 
   // A wallpaper by its name.
@@ -99,7 +99,7 @@ function parse(text: unknown, settings: Settings, wallpapers: readonly Wallpaper
   return unknown()
 }
 
-/** The action `/wallpaper <text>` asks for. */
+/** The action `/cwallpaper <text>` asks for. */
 export function parseCommand(text: string, settings: Settings, wallpapers: readonly Wallpaper[]): Action {
   try {
     return parse(text, settings, wallpapers)
@@ -110,13 +110,13 @@ export function parseCommand(text: string, settings: Settings, wallpapers: reado
 
 const word = (v: unknown): string => (v === true ? 'on' : v === false ? 'off' : String(v))
 
-/** What `/wallpaper` with no words says: one or two plain lines. */
+/** What `/cwallpaper` with no words says: one or two plain lines. */
 export function statusText(settings: Settings, wallpapers: readonly Wallpaper[]): string {
   try {
     const all = list(wallpapers)
     const w = currentWallpaper(settings, all)
     const label = w?.label ?? 'none'
-    if (!settings.on) return `The wallpaper is off. /wallpaper on brings back ${label}.`
+    if (!settings.on) return `The wallpaper is off. /cwallpaper on brings back ${label}.`
     const own = w ? ownOf(w) : []
     const values = (w && settings.own && settings.own[w.id]) || {}
     const mine = own.map(o => `${label} ${o.key}: ${word(readValue(o, values[o.key]))}`)
@@ -134,7 +134,7 @@ const pad = (left: string, right: string): string => `  ${left.padEnd(30)} ${rig
 export function helpText(wallpapers: readonly Wallpaper[]): string {
   const all = list(wallpapers)
   const lines = [
-    'Usage: /wallpaper [command]',
+    'Usage: /cwallpaper [command]',
     pad('(none)', 'what is drawn now; also draws it afresh'),
     pad('settings', 'open the settings pane'),
     pad('help', 'this list'),

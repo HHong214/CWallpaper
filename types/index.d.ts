@@ -1,4 +1,4 @@
-// The wallpaper mod's session values ($.state), which outlive a reload of its
+// The CWallpaper mod's session values ($.state), which outlive a reload of its
 // code (every change of an option reloads it). Settings are never kept here:
 // they are the plugin's options.
 
@@ -11,7 +11,7 @@ export type WallpaperPendingWrite = { key: string; value: boolean | string | num
 
 declare module 'claude-code' {
   interface PluginState {
-    wallpaper: {
+    CWallpaper: {
       paneOpen: WallpaperPaneOpen
       lookSet: WallpaperLookSet
       /**

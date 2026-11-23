@@ -61,7 +61,7 @@ export const COMMON: readonly OptionSpec[] = Object.freeze([
   spec({ key: 'blur', title: 'Panels: blur', description: 'How far the panels blur the wallpaper behind them, 0 to 40.', type: 'number', default: 0, min: 0, max: 40 }),
   spec({ key: 'dim', title: 'Scene: dim', description: 'How much the wallpaper itself is darkened so words stand clear of it, 0 to 80.', type: 'number', default: 30, min: 0, max: 80 }),
   spec({ key: 'colors', title: 'App colors follow the wallpaper', description: 'Repaint the app in colors that match the wallpaper.', type: 'boolean', default: true }),
-  spec({ key: 'fps', title: 'Show FPS', description: 'Show the frame rate of a wallpaper the app plays on the GPU.', type: 'boolean', default: false }),
+  spec({ key: 'fps', title: 'Show FPS', description: 'Draw the measured frames a second at the top left of the chat, on a wallpaper the app plays on the GPU.', type: 'boolean', default: false }),
 ])
 
 const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)

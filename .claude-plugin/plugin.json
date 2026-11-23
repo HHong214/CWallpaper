@@ -1,8 +1,8 @@
 {
-  "name": "wallpaper",
-  "description": "A moving wallpaper and matching colors for the whole app: Kiki (pixel art of a young witch and her black cat floating on a broom toward a seaside city, following your clock from day to sunset to night) or a black hole in ASCII art drawn by code (a gold ring, its disc bent over and under it, everything streaming in). Its settings are the plugin's options; /wallpaper settings opens them in a pane.",
+  "name": "CWallpaper",
+  "description": "A moving wallpaper and matching colors for the whole app: Kiki (pixel art of a young witch and her black cat floating on a broom toward a seaside city, following your clock from day to sunset to night) or a black hole in ASCII art drawn by code (a gold ring, its disc bent over and under it, everything streaming in). Its settings are the plugin's options; /cwallpaper settings opens them in a pane.",
   "author": {
-    "name": "local"
+    "name": "HHong214"
   },
   "keywords": [
     "mod",
@@ -78,7 +78,7 @@
     "fps": {
       "type": "boolean",
       "title": "Show FPS",
-      "description": "Show the frame rate of a wallpaper the app plays on the GPU.",
+      "description": "Draw the measured frames a second at the top left of the chat, on a wallpaper the app plays on the GPU.",
       "default": false
     },
     "kikiTime": {

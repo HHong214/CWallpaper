@@ -1,9 +1,9 @@
-// wallpaper: a moving backdrop and matching colors for the whole app. The
+// CWallpaper: a moving backdrop and matching colors for the whole app. The
 // wallpapers are under ./wallpapers (Kiki, the black hole), listed in
 // ./core/registry; the settings are the plugin's options (the manifest's
 // `userConfig`), read by ./core/options. This file is the wiring alone: it
 // reads the options, sets the theme, answers the Backdrop render, runs
-// `/wallpaper` and draws the settings pane.
+// `/cwallpaper` and draws the settings pane.
 //
 // A look is two things sent in one `$.theme.set`: `colors`, which repaint the
 // app, and a `backdrop` behind the conversation. Over a moving scene the app
@@ -29,17 +29,17 @@ import type { Wallpaper } from './core/registry'
 import { sceneFor } from './core/scene'
 import { makeColors } from './make-colors.js'
 
-// The name the manifest gives the plugin: its options are `wallpaper.<key>` in /config.
-const PLUGIN = 'wallpaper'
-const PANE = 'wallpaper-settings'
+// The name the manifest gives the plugin: its options are `CWallpaper.<key>` in /config.
+const PLUGIN = 'CWallpaper'
+const PANE = 'cwallpaper-settings'
 const PANE_TITLE = 'CWallpaper'
 // The C of the title, in the orange of the owner's other mods.
 const BRAND = '#D97757'
 
 // Session values that outlive a reload of this code (./types).
-const PANE_OPEN = { plugin: 'wallpaper', key: 'paneOpen' } as const
-const LOOK_SET = { plugin: 'wallpaper', key: 'lookSet' } as const
-const PENDING = { plugin: 'wallpaper', key: 'pendingWrites' } as const
+const PANE_OPEN = { plugin: 'CWallpaper', key: 'paneOpen' } as const
+const LOOK_SET = { plugin: 'CWallpaper', key: 'lookSet' } as const
+const PENDING = { plugin: 'CWallpaper', key: 'pendingWrites' } as const
 
 /** One option to write: its manifest key and the value. */
 type Write = { key: string; value: OptionValue }
@@ -242,7 +242,7 @@ function wakeSoon($: EngineInterface): void {
       // A redraw once the module was unloaded rejects: there is nothing left to draw then.
       wakeTimers.push($.clock.after(ms, () => void wake($).catch(() => undefined)))
     } catch {
-      // No timer: /wallpaper with no words draws the scene afresh instead.
+      // No timer: /cwallpaper with no words draws the scene afresh instead.
     }
   }
 }
@@ -431,7 +431,7 @@ export const register: Register = (on, options) => {
     try {
       const ids = WALLPAPERS.map(w => w.id).join('|')
       await $.command.register({
-        name: 'wallpaper',
+        name: 'cwallpaper',
         description: 'The app wallpaper: settings, Kiki, the black hole, on, off',
         argumentHint: `[settings|${ids}|on|off|help]`,
         immediate: true,
@@ -473,12 +473,12 @@ export const register: Register = (on, options) => {
         await redraw($)
       }
     } catch {
-      // Left closed; /wallpaper settings opens it.
+      // Left closed; /cwallpaper settings opens it.
     }
     return next(e)
   })
 
-  on('command.run', { command: 'wallpaper' }, async ($, e) => {
+  on('command.run', { command: 'cwallpaper' }, async ($, e) => {
     try {
       return { text: await run($, typeof e.args === 'string' ? e.args : '') }
     } catch (err) {

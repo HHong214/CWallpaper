@@ -23,7 +23,7 @@ export type SceneKit = { Shader?: unknown; Svg?: unknown; [element: string]: unk
 export type Wallpaper = {
   id: string
   label: string
-  /** Other words `/wallpaper` takes for it, whatever the letter case. */
+  /** Other words `/cwallpaper` takes for it, whatever the letter case. */
   aliases: readonly string[]
   /** `svg`: the app animates the SVG itself; `shader`: a GPU shader over a still SVG. */
   kind: 'svg' | 'shader'
