@@ -1,5 +1,5 @@
 // Tests for Kiki inside the mod: hooks/register.tsx and what the Backdrop shows, rewritten for the rebuild (see
-// core-contract.md). What 1.9.0 had these tests set with `/wallpaper` commands and keep in the mod's store is now
+// core-contract.md). What 1.9.0 had these tests set with `/cwallpaper` commands and keep in the mod's store is now
 // the plugin's options (the manifest's `userConfig`, handed to the test as `{ options }`): see
 // core-backdrop.test.tsx for how the harness drives options and what the mod writes with `$.config.set`.
 //
@@ -11,7 +11,7 @@
 // WHAT WAS DROPPED, and why:
 //   * "motion off / smooth / steps" at the end of the first test, "light stays light after a reload of the
 //     settings", the old valley's saved place, the status line's "Last draw" and "Wake draws so far" and its
-//     "following the clock, with sunrise at..." lines, and the command usage line ("Usage: /wallpaper motion ...")
+//     "following the clock, with sunrise at..." lines, and the command usage line ("Usage: /cwallpaper motion ...")
 //     are gone: the contract's status is a pure function of the settings and its errors are core-commands.test.ts's.
 //     The motion option's still picture is pinned in core-backdrop.test.tsx.
 //   * The picture and video loaders' test is deleted with the loaders.
@@ -19,15 +19,15 @@ import { expect, mock, test } from 'claude-code/testing'
 
 // A backdrop's props name it by `scene` (and by `id` before Claude Code 2.1.323):
 // both are given, so the test reads the same on either build.
-const propsOf = (name: string, plugin = 'wallpaper') => ({ id: name, scene: name, plugin, glass: false }) as never
-const BACKDROP = { plugin: 'wallpaper', component: 'Backdrop', props: propsOf('kiki') } as const
+const propsOf = (name: string, plugin = 'CWallpaper') => ({ id: name, scene: name, plugin, glass: false }) as never
+const BACKDROP = { plugin: 'CWallpaper', component: 'Backdrop', props: propsOf('kiki') } as const
 const PANE = {
-  plugin: 'wallpaper',
+  plugin: 'CWallpaper',
   component: 'Pane',
-  requestId: 'wallpaper-settings',
+  requestId: 'cwallpaper-settings',
   props: { title: 'Wallpaper', isFocused: true, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
 } as const
-const wallpaper = (args: string) => ({ command: 'wallpaper', args }) as never
+const wallpaper = (args: string) => ({ command: 'cwallpaper', args }) as never
 // Local noon: Kiki follows the clock, and noon is day everywhere.
 const local = (h: number, m = 0): number => new Date(2026, 5, 15, h, m, 0).getTime()
 const NOON = local(12)
@@ -65,7 +65,7 @@ test('kiki is set at the start, clear and dimmed, drawn as one image, and holds 
   const clock = mock.clock(on)
   mock.store(on)
   const themes: Look[] = []
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  on('command.register', () => ({ value: { command: 'cwallpaper' } }))
   on('theme.set', (_, e) => { themes.push(e as Look); return { value: { isDrawn: true, requestId: 'backdrop' } } })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
@@ -143,7 +143,7 @@ test('every scene is drawn as images, and drawn afresh a few seconds after it fi
   const clock = mock.clock(on, { now: new Date(2026, 5, 15, 12, 0, 0).getTime() })
   mock.store(on)
   let redraws = 0
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  on('command.register', () => ({ value: { command: 'cwallpaper' } }))
   on('theme.set', () => ({ value: { isDrawn: true, requestId: 'backdrop' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('ui.invalidate', () => { redraws += 1; return { value: undefined } })
@@ -204,7 +204,7 @@ test('every scene is drawn as images, and drawn afresh a few seconds after it fi
   await clock.advance(13_000)
   expect(redraws).toBe(before + 4)
 
-  // /wallpaper with no words draws it afresh and answers with the status line.
+  // /cwallpaper with no words draws it afresh and answers with the status line.
   const said = await $.command.run(wallpaper(''))
   expect(said.text).toMatch(/The wallpaper is Kiki\./)
   expect(String(said.text).includes('Fresh frames')).toBe(false)
@@ -218,7 +218,7 @@ test('a first draw that comes late, after the early wake draws, is still drawn a
   const clock = mock.clock(on, { now: new Date(2026, 5, 15, 12, 0, 0).getTime() })
   mock.store(on)
   let redraws = 0
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  on('command.register', () => ({ value: { command: 'cwallpaper' } }))
   on('theme.set', () => ({ value: { isDrawn: true, requestId: 'backdrop' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('ui.invalidate', () => { redraws += 1; return { value: undefined } })
@@ -251,7 +251,7 @@ test('a saved valley is gone: options that name the old pixel valley draw Kiki, 
   mock.store(on)
   const themes: Look[] = []
   const written: unknown[] = []
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  on('command.register', () => ({ value: { command: 'cwallpaper' } }))
   on('theme.set', (_, e) => { themes.push(e as Look); return { value: { isDrawn: true, requestId: 'backdrop' } } })
   on('config.set', (_, e) => { written.push(e); return { value: (e as { value: never }).value } })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -270,7 +270,7 @@ test('a saved valley is gone: options that name the old pixel valley draw Kiki, 
   for (const word of ['valley', 'pixel-valley', 'city Birmingham', 'auto', 'refresh', 'preview night']) {
     const answer = String((await $.command.run(wallpaper(word))).text)
     expect([word, answer.toLowerCase().includes((word.split(' ')[0] ?? '').toLowerCase())]).toEqual([word, true])
-    expect([word, answer.includes('/wallpaper help')]).toEqual([word, true])
+    expect([word, answer.includes('/cwallpaper help')]).toEqual([word, true])
   }
   expect(written).toEqual([])
   const help = String((await $.command.run(wallpaper('help'))).text)
@@ -281,7 +281,7 @@ test('the settings pane picks the kiki time: it writes the option kikiTime', asy
   mock.clock(on)
   mock.store(on)
   const written: { key: string; value: unknown }[] = []
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  on('command.register', () => ({ value: { command: 'cwallpaper' } }))
   on('theme.set', () => ({ value: { isDrawn: true, requestId: 'backdrop' } }))
   on('config.set', (_, e) => { written.push(e as { key: string; value: unknown }); return { value: (e as { value: never }).value } })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -313,7 +313,7 @@ test('the dials come from the options: panels 40% clear, blur 12, no dimming, in
   mock.clock(on)
   mock.store(on)
   const themes: Look[] = []
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  on('command.register', () => ({ value: { command: 'cwallpaper' } }))
   on('theme.set', (_, e) => { themes.push(e as Look); return { value: { isDrawn: true, requestId: 'backdrop' } } })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
@@ -338,7 +338,7 @@ test('the themes that were taken out are no longer commands, and a wrong word wr
   mock.store(on)
   const themes: Look[] = []
   const written: unknown[] = []
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  on('command.register', () => ({ value: { command: 'cwallpaper' } }))
   on('theme.set', (_, e) => { themes.push(e as Look); return { value: { isDrawn: true, requestId: 'backdrop' } } })
   on('config.set', (_, e) => { written.push(e); return { value: (e as { value: never }).value } })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -355,7 +355,7 @@ test('the themes that were taken out are no longer commands, and a wrong word wr
 test('the settings pane has Kiki\'s button and the black hole\'s, and none for the valley, a picture or a video', async ($, on) => {
   mock.clock(on)
   mock.store(on)
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  on('command.register', () => ({ value: { command: 'cwallpaper' } }))
   on('theme.set', () => ({ value: { isDrawn: true, requestId: 'backdrop' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })

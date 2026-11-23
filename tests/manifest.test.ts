@@ -43,13 +43,13 @@ const WORD = { boolean: 'boolean', number: 'number', choice: 'string' } as const
 const WRONG = { boolean: 'yes', number: 'ten', choice: 7 } as const
 
 type Look = { backdrop?: { scene?: string; glass?: { blur?: number; opacity?: number; tint?: string } }; colors?: { label?: string } }
-const wallpaper = (args: string) => ({ command: 'wallpaper', args }) as never
+const wallpaper = (args: string) => ({ command: 'cwallpaper', args }) as never
 
 /** Loads the plugin with these options and says what it said: '' when it loaded. */
 async function loadWith($: any, on: any): Promise<string> {
   mock.clock(on)
   mock.store(on)
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  on('command.register', () => ({ value: { command: 'cwallpaper' } }))
   on('theme.set', () => ({ value: { isDrawn: true, requestId: 'backdrop' } }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   try {
@@ -116,7 +116,7 @@ for (const spec of specs) {
 }
 
 // The black hole's size is not on the status line: the Shader's `values` of its Backdrop show it, with the calm.
-const BACKDROP = { plugin: 'wallpaper', component: 'Backdrop', props: { id: 'blackhole', scene: 'blackhole', plugin: 'wallpaper', glass: false } } as never
+const BACKDROP = { plugin: 'CWallpaper', component: 'Backdrop', props: { id: 'blackhole', scene: 'blackhole', plugin: 'CWallpaper', glass: false } } as never
 for (const [option, value, name, number] of [
   ['blackholeSize', 'small', 'size', 0.8],
   ['blackholeSize', 'large', 'size', 1.25],
@@ -139,7 +139,7 @@ test('with no options the plugin gets the manifest\'s defaults: Kiki, on, smooth
   mock.clock(on)
   mock.store(on)
   const looks: Look[] = []
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  on('command.register', () => ({ value: { command: 'cwallpaper' } }))
   on('theme.set', (_, e) => { looks.push(e as Look); return { value: { isDrawn: true, requestId: 'backdrop' } } })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })

@@ -18,11 +18,11 @@
 //     * the Svg's source is the still picture: at most 124,000 characters, no animation, and the SAME string under
 //       the shader and alone.
 //   With motion off the Backdrop answers a bare `Svg` and no `Shader` at all.
-//   `/wallpaper blackhole`, `black-hole` and `hole` write the option `wallpaper`; `/wallpaper size large` and
-//   `/wallpaper calm on` write `blackholeSize` and `blackholeCalm` while the black hole is on; while Kiki is on they
+//   `/cwallpaper blackhole`, `black-hole` and `hole` write the option `wallpaper`; `/cwallpaper size large` and
+//   `/cwallpaper calm on` write `blackholeSize` and `blackholeCalm` while the black hole is on; while Kiki is on they
 //   are errors that say whose they are ("Size belongs to Black hole. The wallpaper is Kiki.").
 //   The pane with the black hole on shows its two own rows (buttons `blackholeSize:small|medium|large` and
-//   `blackholeCalm:<opposite>`) and no row of Kiki's, and with Show FPS on no "cannot be measured" note.
+//   `blackholeCalm:<opposite>`) and no row of Kiki's, and with Show FPS on the note "Drawn at the top left of the chat." (not "cannot be measured").
 //   The colors are a dark set with an amber accent that the app will paint. Another mod's backdrop of that name is
 //   still left to it.
 //
@@ -38,15 +38,15 @@ import { expect, mock, test } from 'claude-code/testing'
 import { checkColors } from '../hooks/make-colors.js'
 
 // A backdrop's props name it by `scene` (and by `id` before Claude Code 2.1.323): both are given.
-const propsOf = (name: string, plugin = 'wallpaper') => ({ id: name, scene: name, plugin, glass: false }) as never
-const BACKDROP = { plugin: 'wallpaper', component: 'Backdrop', props: propsOf('blackhole') } as const
+const propsOf = (name: string, plugin = 'CWallpaper') => ({ id: name, scene: name, plugin, glass: false }) as never
+const BACKDROP = { plugin: 'CWallpaper', component: 'Backdrop', props: propsOf('blackhole') } as const
 const PANE = {
-  plugin: 'wallpaper',
+  plugin: 'CWallpaper',
   component: 'Pane',
-  requestId: 'wallpaper-settings',
+  requestId: 'cwallpaper-settings',
   props: { title: 'Wallpaper', isFocused: true, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
 } as const
-const wallpaper = (args: string) => ({ command: 'wallpaper', args }) as never
+const wallpaper = (args: string) => ({ command: 'cwallpaper', args }) as never
 const HOLE = { options: { wallpaper: 'blackhole' } }
 const CAP = 124_000
 
@@ -66,7 +66,7 @@ async function begin($: Ctx, on: Ctx): Promise<{ looks: Look[]; written: Written
   mock.store(on)
   const looks: Look[] = []
   const written: Written[] = []
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  on('command.register', () => ({ value: { command: 'cwallpaper' } }))
   on('theme.set', (_: unknown, e: unknown) => { looks.push(e as Look); return { value: { isDrawn: true, requestId: 'backdrop' } } })
   on('config.set', (_: unknown, e: { key: string; value: unknown }) => { written.push({ field: e.key.slice(e.key.indexOf('.') + 1), value: e.value }); return { value: e.value } })
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
@@ -86,7 +86,7 @@ const kidsOf = (el: Node): Node[] => (Array.isArray(el.children) ? (el.children 
 
 type Drawn = { shaders: Node[]; svgs: Record<string, unknown>[]; root: Node }
 /** The Backdrop of the black hole as the surface asks for it: every Shader and every Svg of the answer. */
-const drawnBy = async ($: Ctx, surface: 'desktop' | 'mobile' = 'desktop', name = 'blackhole', plugin = 'wallpaper'): Promise<Drawn> => {
+const drawnBy = async ($: Ctx, surface: 'desktop' | 'mobile' = 'desktop', name = 'blackhole', plugin = 'CWallpaper'): Promise<Drawn> => {
   const ui = await $.ui.mount({ ...BACKDROP, surface, props: propsOf(name, plugin) })
   const tree = await ui.drawn()
   await ui.unmount()
@@ -222,13 +222,13 @@ test('the Svg is the same string under the shader and alone (the two tests above
 // ------------------------------------------------ choosing it
 
 for (const word of ['blackhole', 'black-hole', 'hole']) {
-  test(`/wallpaper ${word} chooses the black hole: it writes the option wallpaper = blackhole`, async ($, on) => {
+  test(`/cwallpaper ${word} chooses the black hole: it writes the option wallpaper = blackhole`, async ($, on) => {
     const { written } = await begin($, on)
     await $.command.run(wallpaper(word))
     expect([word, written]).toEqual([word, [{ field: 'wallpaper', value: 'blackhole' }]])
   })
 
-  test(`/wallpaper ${word} answers that the wallpaper is Black hole (after a command)`, async ($, on) => {
+  test(`/cwallpaper ${word} answers that the wallpaper is Black hole (after a command)`, async ($, on) => {
     await begin($, on)
     const said = await $.command.run(wallpaper(word))
     expect([word, String(said.text)]).toEqual([word, expect.stringMatching(/The wallpaper is Black hole\./)])
@@ -243,7 +243,7 @@ test('a saved black hole is the look at the start, with its own colors', HOLE, a
   expect(looks.at(-1)?.colors?.label).not.toBe('Kiki night')
 })
 
-test('/wallpaper kiki brings Kiki back: it writes the option wallpaper = kiki', HOLE, async ($, on) => {
+test('/cwallpaper kiki brings Kiki back: it writes the option wallpaper = kiki', HOLE, async ($, on) => {
   const { written } = await begin($, on)
   await $.command.run(wallpaper('kiki'))
   expect(written).toEqual([{ field: 'wallpaper', value: 'kiki' }])
@@ -265,7 +265,7 @@ test('Kiki is the wallpaper by default: her colors and her own picture, with no 
   expect([shaders, kiki]).toEqual([0, true])
 })
 
-test('after /wallpaper kiki the look is Kiki\'s, and the black hole is there to go back to (after a command)', HOLE, async ($, on) => {
+test('after /cwallpaper kiki the look is Kiki\'s, and the black hole is there to go back to (after a command)', HOLE, async ($, on) => {
   const { looks } = await begin($, on)
   expect(looks.at(-1)?.backdrop?.scene).toBe('blackhole')
   const kiki = await $.command.run(wallpaper('kiki'))
@@ -284,7 +284,7 @@ test('the help names blackhole, its size and its calm, and still names none of t
   expect(/valley|weather/i.test(help)).toBe(false)
   const wrong = String((await $.command.run(wallpaper('moonbase'))).text)
   expect(wrong).toMatch(/moonbase/)
-  expect(wrong).toMatch(/\/wallpaper help/)
+  expect(wrong).toMatch(/\/cwallpaper help/)
 })
 
 // ------------------------------------------------ its own options
@@ -297,7 +297,7 @@ for (const [text, field, value, start] of [
   ['calm on', 'blackholeCalm', true, {}],
   ['calm off', 'blackholeCalm', false, { blackholeCalm: true }],
 ] as const) {
-  test(`/wallpaper ${text} writes the option ${field} while the black hole is on`, { options: { wallpaper: 'blackhole', ...start } as never }, async ($, on) => {
+  test(`/cwallpaper ${text} writes the option ${field} while the black hole is on`, { options: { wallpaper: 'blackhole', ...start } as never }, async ($, on) => {
     const { written } = await begin($, on)
     const said = await $.command.run(wallpaper(text))
     expect(written).toEqual([{ field, value }])
@@ -305,7 +305,7 @@ for (const [text, field, value, start] of [
   })
 }
 
-test('/wallpaper size and /wallpaper calm with a value they do not take are errors that write nothing', HOLE, async ($, on) => {
+test('/cwallpaper size and /cwallpaper calm with a value they do not take are errors that write nothing', HOLE, async ($, on) => {
   const { written } = await begin($, on)
   for (const text of ['size huge', 'size', 'calm maybe', 'calm']) {
     const said = String((await $.command.run(wallpaper(text))).text)
@@ -328,7 +328,7 @@ test('while the black hole is on, Kiki\'s options are errors that say whose they
   expect(written).toEqual([])
 })
 
-test('after /wallpaper size large and /wallpaper calm on the Shader is handed size 1.25 and calm 1 (after a command)', HOLE, async ($, on) => {
+test('after /cwallpaper size large and /cwallpaper calm on the Shader is handed size 1.25 and calm 1 (after a command)', HOLE, async ($, on) => {
   await begin($, on)
   await $.command.run(wallpaper('size large'))
   expect(valuesOf(await drawnBy($)).size).toBe(1.25)
@@ -361,9 +361,10 @@ test('the pane\'s calm button writes the opposite of today\'s value', { options:
   await ui.unmount()
 })
 
-test('with Show FPS on the black hole\'s pane has no "cannot be measured" note', { options: { wallpaper: 'blackhole', fps: true } }, async ($, on) => {
+test('with Show FPS on the black hole\'s pane says where the readout is drawn, and has no "cannot be measured" note', { options: { wallpaper: 'blackhole', fps: true } }, async ($, on) => {
   await begin($, on)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /Drawn at the top left of the chat\./ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /cannot be measured/i })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /frame rate/i })).toBeUndefined()
   expect(await ui.find({ key: 'fps:false' })).toBeDefined()

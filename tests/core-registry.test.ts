@@ -163,6 +163,12 @@ test('moves is false with motion off and true otherwise', () => {
   }
 })
 
+test('no description of an option of the wallpapers names /wallpaper', () => {
+  for (const w of WALLPAPERS) {
+    for (const o of w.options) expect([w.id, o.key, o.description.includes('/wallpaper')]).toEqual([w.id, o.key, false])
+  }
+})
+
 test('Kiki shows the time of day the settings choose: three different pictures, and in auto the one the clock is in', () => {
   const at = (time: string, now = NOON) => kiki.svg(settings({}, { kiki: { time } }), now)
   const day = at('day')

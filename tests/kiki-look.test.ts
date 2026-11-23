@@ -1,6 +1,6 @@
 // Tests for Kiki's own look and motion: the picture `kiki.svg(settings, now)` of hooks/wallpapers/kiki/index.ts
 // (the Wallpaper `kiki` of the registry, core-registry.test.ts). In 1.9.0 these two tests drew the picture through
-// the Backdrop after `/wallpaper time night` and `/wallpaper motion ...`; the Backdrop passes the picture on as it
+// the Backdrop after `/cwallpaper time night` and `/cwallpaper motion ...`; the Backdrop passes the picture on as it
 // is, so they now ask for the picture itself, with settings built by hand (the shape of core-options.test.ts).
 // Every rule they pin is the old test's, unchanged: every moving part has its rule, the sea and the clouds glide,
 // motion light rests only the shooting star, the night sky is alive, the sea keeps no glitter column, the small

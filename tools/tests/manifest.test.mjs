@@ -7,10 +7,14 @@
 //      is "type": "string" with `options` equal to its choices in order; a number is "type": "number" with `min` and
 //      `max`; a boolean is "type": "boolean"), the `title`, a non-empty `description` equal to the spec's, the
 //      `default`. No other key, so `spinner` is gone.
-//   2. plugin.json: `name` is "wallpaper"; there is NO `version` field; the description names Kiki and the black hole
-//      and says nothing of a picture or a video of your own.
-//   3. .claude-plugin/marketplace.json: `name` is "cwallpaper", its one plugin entry is "wallpaper" with
-//      "source": "./" and no `version`.
+//   2. plugin.json: `name` is "CWallpaper" (capitals are fine: `claude plugin validate .` warns that it is not
+//      kebab-case and accepts it, so no test here forbids them); `author.name` is "HHong214"; there is NO `version`
+//      field; the description names Kiki and the black hole, says nothing of a picture or a video of your own, and
+//      never names "/wallpaper" (the command is "/cwallpaper"); no option description does either, and the `fps`
+//      description says where the readout is drawn.
+//   3. .claude-plugin/marketplace.json: `name` is "cwallpaper" (unchanged), its `metadata.description` is
+//      "CWallpaper: moving wallpapers for the Claude desktop app.", its one plugin entry is "CWallpaper" with
+//      "source": "./" and no `version`. (Installed, the id is "CWallpaper@cwallpaper".)
 //   4. The five modules under hooks/core/ (options, registry, commands, pane, scene) import under Node as they are.
 //
 // WHY THERE IS NO `version` IN plugin.json (decided, do not add one back by habit): with no version pinned, every
@@ -126,8 +130,28 @@ describe('plugin.json userConfig is what optionSpecs(WALLPAPERS) lists', () => {
 })
 
 describe('plugin.json', () => {
-  it('is named wallpaper', () => {
-    assert.equal(read('.claude-plugin/plugin.json').name, 'wallpaper')
+  it('is named CWallpaper', () => {
+    assert.equal(read('.claude-plugin/plugin.json').name, 'CWallpaper')
+  })
+
+  it('is by HHong214, not by local', () => {
+    const { author } = read('.claude-plugin/plugin.json')
+    assert.equal(author && author.name, 'HHong214')
+  })
+
+  it('names the command /cwallpaper wherever it names it, never /wallpaper', () => {
+    const manifest = read('.claude-plugin/plugin.json')
+    assert.ok(!manifest.description.includes('/wallpaper'), 'the description says /cwallpaper')
+    for (const [key, entry] of Object.entries(manifest.userConfig)) {
+      assert.ok(!String(entry.description).includes('/wallpaper'), `${key}: the description says /cwallpaper`)
+    }
+  })
+
+  it('describes the fps option as the readout at the top left of the chat', () => {
+    const { fps } = read('.claude-plugin/plugin.json').userConfig
+    assert.equal(fps.title, 'Show FPS')
+    assert.equal(fps.default, false)
+    assert.equal(fps.description, 'Draw the measured frames a second at the top left of the chat, on a wallpaper the app plays on the GPU.')
   })
 
   it('has no version field: every commit pushed to GitHub is an update', () => {
@@ -144,13 +168,17 @@ describe('plugin.json', () => {
 })
 
 describe('marketplace.json', () => {
-  it('is named cwallpaper, with one plugin entry, wallpaper, sourced from ./, and no version', () => {
+  it('is described as CWallpaper: moving wallpapers for the Claude desktop app.', () => {
+    assert.equal(read('.claude-plugin/marketplace.json').metadata.description, 'CWallpaper: moving wallpapers for the Claude desktop app.')
+  })
+
+  it('is named cwallpaper, with one plugin entry, CWallpaper, sourced from ./, and no version', () => {
     const market = read('.claude-plugin/marketplace.json')
     assert.equal(market.name, 'cwallpaper')
     assert.ok(!('version' in market), 'the marketplace pins no `version`')
     assert.equal(market.plugins.length, 1)
     const [entry] = market.plugins
-    assert.equal(entry.name, 'wallpaper')
+    assert.equal(entry.name, 'CWallpaper')
     assert.equal(entry.source, './')
     assert.ok(!('version' in entry), 'the plugin entry pins no `version`')
   })

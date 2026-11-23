@@ -99,6 +99,15 @@ test('COMMON lists the eight common options in order, with the titles and kinds 
   }
 })
 
+test('the fps option says where the readout is drawn, and no description names /wallpaper', () => {
+  const fps = COMMON.find(o => o.key === 'fps')
+  expect(fps?.title).toBe('Show FPS')
+  expect(fps?.default).toBe(false)
+  expect(fps?.description).toBe('Draw the measured frames a second at the top left of the chat, on a wallpaper the app plays on the GPU.')
+  for (const o of COMMON) expect([o.key, o.description.includes('/wallpaper')]).toEqual([o.key, false])
+  for (const s of optionSpecs(WALLPAPERS)) expect([s.key, s.description.includes('/wallpaper')]).toEqual([s.key, false])
+})
+
 test('COMMON holds 1.9.0\'s defaults, the motion choices and the three ranges', () => {
   const by = (key: string) => COMMON.find(o => o.key === key)
   expect(COMMON.map(o => o.default)).toEqual(['kiki', true, 'smooth', 100, 0, 30, true, false])

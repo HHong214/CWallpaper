@@ -1,5 +1,5 @@
 // Tests of the time of day Kiki shows through the Backdrop, rewritten for the rebuild. In 1.9.0 the test set each
-// time with `/wallpaper time ...` and jumped the clock with `/wallpaper off` and `on`; now each time is an option of
+// time with `/cwallpaper time ...` and jumped the clock with `/cwallpaper off` and `on`; now each time is an option of
 // a test of its own (`kikiTime`), and the clock starts where the test says.
 //
 // These tests compare the Backdrop with `sceneFor` of hooks/core/scene.ts, which the contract says is what the
@@ -12,8 +12,8 @@ import { readSettings } from '../hooks/core/options'
 import { WALLPAPERS } from '../hooks/core/registry'
 import { sceneFor } from '../hooks/core/scene'
 
-const propsOf = (name: string, plugin = 'wallpaper') => ({ id: name, scene: name, plugin, glass: false }) as never
-const BACKDROP = { plugin: 'wallpaper', component: 'Backdrop', props: propsOf('kiki') } as const
+const propsOf = (name: string, plugin = 'CWallpaper') => ({ id: name, scene: name, plugin, glass: false }) as never
+const BACKDROP = { plugin: 'CWallpaper', component: 'Backdrop', props: propsOf('kiki') } as const
 const local = (h: number, m = 0): number => new Date(2026, 5, 15, h, m, 0).getTime()
 
 // Every Svg element drawn, with its props.
@@ -44,7 +44,7 @@ for (const phase of ['day', 'sunset', 'night'] as const) {
   test(`the option kikiTime ${phase} shows that time of day, stable across redraws, a turn and time passing (needs the core)`, { options: { kikiTime: phase } }, async ($, on) => {
     const clock = mock.clock(on)
     mock.store(on)
-    on('command.register', () => ({ value: { command: 'wallpaper' } }))
+    on('command.register', () => ({ value: { command: 'cwallpaper' } }))
     on('theme.set', () => ({ value: { isDrawn: true, requestId: 'backdrop' } }))
     on('session.start', (_, e) => ({ cwd: e.cwd }))
     on('turn.start', (_, e) => ({ turnId: e.turnId }))
@@ -76,7 +76,7 @@ for (const [label, now, phase] of [['noon', local(12), 'day'], ['twenty past six
     // The machine's clock and the default sun times (06:30 and 18:30).
     mock.clock(on, { now })
     mock.store(on)
-    on('command.register', () => ({ value: { command: 'wallpaper' } }))
+    on('command.register', () => ({ value: { command: 'cwallpaper' } }))
     on('theme.set', () => ({ value: { isDrawn: true, requestId: 'backdrop' } }))
     on('session.start', (_, e) => ({ cwd: e.cwd }))
     await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })

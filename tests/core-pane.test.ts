@@ -28,8 +28,9 @@
 //          0-40, 0-80), so at an end the button writes the end again
 //       7. app colors: ONE control, key 'colors', value = !settings.colors
 //       8. Show FPS: ONE control, key 'fps', value = !settings.fps
-//       9. a note row, only when the current wallpaper's kind is 'svg' and Show FPS is on: its text says the frame
-//          rate of this wallpaper cannot be measured; it follows the Show FPS row at once
+//       9. a note row, only when Show FPS is on, straight after the Show FPS row: for a wallpaper of kind 'svg' its
+//          text says the frame rate of this wallpaper cannot be measured; for one of kind 'shader' it is exactly
+//          "Drawn at the top left of the chat."; with Show FPS off, no note
 //      10. a heading whose text holds the current wallpaper's label (always, even when it has no options)
 //      11. the current wallpaper's own options only, in its order, each one row under its manifest key
 //          (`<id><Key>`): a choice is one control per choice with the setting's `current`; a boolean is one toggle
@@ -247,13 +248,34 @@ test('with Show FPS on, an svg wallpaper gets a note that its frame rate cannot 
   }
 })
 
-test('no note shows with Show FPS off, nor for a shader wallpaper, whose frame rate can be measured', () => {
+test('with Show FPS on, a shader wallpaper gets the note "Drawn at the top left of the chat.", straight after the FPS row', () => {
+  const cases: [string, Row[]][] = [
+    ['blackhole', rows({ wallpaper: 'blackhole', fps: true })],
+    ['stand', rows({ wallpaper: 'stand', fps: true }, {}, {}, ALL)],
+  ]
+  for (const [wallpaper, list] of cases) {
+    const notes = list.filter(r => r.kind === 'note')
+    expect([wallpaper, notes.length]).toEqual([wallpaper, 1])
+    expect([wallpaper, notes[0]?.text]).toEqual([wallpaper, 'Drawn at the top left of the chat.'])
+    const at = list.findIndex(r => nameOf(r) === 'fps')
+    expect([wallpaper, list.indexOf(notes[0] as Row)]).toEqual([wallpaper, at + 1])
+    expect([wallpaper, list[at + 2]?.kind]).toEqual([wallpaper, 'heading'])
+  }
+})
+
+test('no note shows with Show FPS off, whichever the wallpaper', () => {
   expect(rows({ fps: false }).some(r => r.kind === 'note')).toBe(false)
   expect(rows({ wallpaper: 'blackhole', fps: false }).some(r => r.kind === 'note')).toBe(false)
-  // The black hole is a shader wallpaper now: it draws its own frame rate.
-  expect(rows({ wallpaper: 'blackhole', fps: true }).some(r => r.kind === 'note')).toBe(false)
-  expect(rows({ wallpaper: 'stand', fps: true }, {}, {}, ALL).some(r => r.kind === 'note')).toBe(false)
   expect(rows({ wallpaper: 'stand', fps: false }, {}, {}, ALL).some(r => r.kind === 'note')).toBe(false)
+})
+
+test('no text of the pane names /wallpaper', () => {
+  for (const fps of [true, false]) {
+    for (const wallpaper of ['kiki', 'blackhole', 'stand']) {
+      const text = JSON.stringify(paneRows(settings({ wallpaper, fps }), ALL))
+      expect([wallpaper, fps, text.includes('/wallpaper')]).toEqual([wallpaper, fps, false])
+    }
+  }
 })
 
 test('the pane has no row for a picture or a video of your own', () => {

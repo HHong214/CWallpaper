@@ -1,4 +1,4 @@
-// Tests for `/wallpaper ...` text to an action: hooks/core/commands.ts (pure: never throws; junk in gives the
+// Tests for `/cwallpaper ...` text to an action: hooks/core/commands.ts (pure: never throws; junk in gives the
 // default out). Written before the code, to the contract in core-contract.md.
 //
 // NAMES THIS FILE PINS, with their signatures:
@@ -236,13 +236,13 @@ test('picture and video say they were removed and that wallpapers are now made i
   }
 })
 
-test('anything else is an error that names what was typed and points to /wallpaper help', () => {
+test('anything else is an error that names what was typed and points to /cwallpaper help', () => {
   for (const text of ['moonbase', 'valley', 'pixel-valley', 'delivery', 'refresh', 'auto', 'city Birmingham', 'MoonBase now']) {
     const a = run(text)
     expect([text, a.kind]).toEqual([text, 'error'])
     const message = String(a.message)
     expect([text, message.toLowerCase().includes((text.split(' ')[0] ?? '').toLowerCase())]).toEqual([text, true])
-    expect([text, message.includes('/wallpaper help')]).toEqual([text, true])
+    expect([text, message.includes('/cwallpaper help')]).toEqual([text, true])
   }
 })
 
@@ -253,7 +253,7 @@ test('parseCommand is pure: it changes nothing it is given and never throws on o
   parseCommand('blackhole', s, WALLPAPERS as never)
   expect(JSON.stringify(s)).toBe(before)
   expect(run('clear 40')).toEqual(run('clear 40'))
-  for (const odd of [5, {}, [], true, '\n', '\t on', 'on\n', 'x'.repeat(5000), '"', '/wallpaper on']) {
+  for (const odd of [5, {}, [], true, '\n', '\t on', 'on\n', 'x'.repeat(5000), '"', '/cwallpaper on']) {
     expect([String(odd).slice(0, 12), typeof run(odd).kind]).toEqual([String(odd).slice(0, 12), 'string'])
   }
 })
@@ -308,7 +308,7 @@ test('no status or help text speaks of a picture or a video', () => {
 test('the help lists every command and the wallpapers by name', () => {
   const help = helpText(WALLPAPERS as never)
   expect(typeof help).toBe('string')
-  expect(help).toMatch(/\/wallpaper/)
+  expect(help).toMatch(/\/cwallpaper/)
   for (const word of ['settings', 'help', 'kiki', 'blackhole', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'time', 'spinner', 'size', 'calm']) {
     expect([word, help.includes(word)]).toEqual([word, true])
   }
@@ -316,6 +316,25 @@ test('the help lists every command and the wallpapers by name', () => {
   expect(help.includes('black-hole') && help.includes('hole')).toBe(true)
   // The valley and its words are gone.
   expect(/valley|weather/i.test(help)).toBe(false)
+})
+
+test('no text of the commands names /wallpaper: the help, the status and every error say /cwallpaper where they name the command', () => {
+  const texts: string[] = [helpText(WALLPAPERS as never), helpText(ALL)]
+  for (const over of [{}, { on: false }, { wallpaper: 'blackhole' }, { wallpaper: 'blackhole', fps: true }, { fps: true }]) {
+    texts.push(statusText(settings(over), WALLPAPERS as never))
+  }
+  for (const text of [
+    'moonbase', 'valley', 'on now', 'kiki now', 'clear', 'clear 101', 'clear abc', 'blur 41', 'dim 81', 'motion steps', 'colors maybe', 'fps maybe',
+    'time dusk', 'time', 'spinner maybe', 'picture a.png', 'video b.mp4', 'size large', 'calm on', 'size huge',
+  ]) {
+    const a = run(text)
+    if (a.kind === 'error') texts.push(String(a.message))
+  }
+  for (const text of ['time night', 'spinner off']) texts.push(String(run(text, { wallpaper: 'blackhole' }).message))
+  expect(texts.length > 25).toBe(true)
+  for (const [i, t] of texts.entries()) expect([i, t.includes('/wallpaper')]).toEqual([i, false])
+  expect(texts[0]).toMatch(/\/cwallpaper/)
+  expect(String(run('moonbase').message)).toMatch(/\/cwallpaper help/)
 })
 
 test('the help is made from the wallpapers it is given', () => {

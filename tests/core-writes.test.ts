@@ -6,7 +6,7 @@
 // THE SESSION VALUES (`$.state`). The test's `$` has no `state`, but a test can answer the mod's own `$.state.get`
 // and `$.state.set` with hooks it registers (`on('state.get')`, `on('state.set')`, beneath the plugin): `begin`
 // below keeps a Map of them, seeded by the test, and records every write. The keys the mod uses are the ones of
-// `{ plugin: 'wallpaper', key: ... }`: `lookSet` (true once this mod has set the look this session), `paneOpen`,
+// `{ plugin: 'CWallpaper', key: ... }`: `lookSet` (true once this mod has set the look this session), `paneOpen`,
 // and `pendingWrites` (to be added): a list of `{ key, value }` options still to write, saved before a first
 // write and emptied (an empty list, or undefined) once all are written; a start writes what it finds there.
 //
@@ -18,7 +18,7 @@
 //
 // RULES PINNED
 //   1. The mod never clears a theme that is not its own: `$.theme.clear()` clears whatever theme stands. It is
-//      made once on the person's ask to turn the wallpaper off (`/wallpaper off`, the pane's on/off control while
+//      made once on the person's ask to turn the wallpaper off (`/cwallpaper off`, the pane's on/off control while
 //      on), and at a start only when `lookSet` says this mod set the look this session and the option says off.
 //      With the option `on: false` any other change (a dial, motion, FPS, colors, an own option, a wallpaper
 //      choice) clears nothing, and nor does a start without `lookSet`.
@@ -32,15 +32,15 @@
 //      `[{ key: 'on', value: true }]` there writes it and empties the list.
 import { expect, mock, test } from 'claude-code/testing'
 
-const propsOf = (name: string, plugin = 'wallpaper') => ({ id: name, scene: name, plugin, glass: false }) as never
-const BACKDROP = { plugin: 'wallpaper', component: 'Backdrop', props: propsOf('kiki') } as const
+const propsOf = (name: string, plugin = 'CWallpaper') => ({ id: name, scene: name, plugin, glass: false }) as never
+const BACKDROP = { plugin: 'CWallpaper', component: 'Backdrop', props: propsOf('kiki') } as const
 const PANE = {
-  plugin: 'wallpaper',
+  plugin: 'CWallpaper',
   component: 'Pane',
-  requestId: 'wallpaper-settings',
+  requestId: 'cwallpaper-settings',
   props: { title: 'Wallpaper', isFocused: true, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
 } as const
-const wallpaper = (args: string) => ({ command: 'wallpaper', args }) as never
+const wallpaper = (args: string) => ({ command: 'cwallpaper', args }) as never
 
 type Look = { backdrop?: { scene?: string } }
 type Written = { field: string; value: unknown }
@@ -53,6 +53,8 @@ type Seen = {
   cleared: number
   /** Every `state.set`, as `[key, value]`. */
   stateWrites: [string, unknown][]
+  /** Every `state.get` and `state.set`, as `<plugin>/<key>`. */
+  stateAsked: string[]
   /** The session values now. */
   kv: Map<string, unknown>
 }
@@ -71,8 +73,8 @@ async function begin(
   mock.clock(on)
   mock.store(on)
   const kv = new Map<string, unknown>(Object.entries(opts.state ?? {}))
-  const seen: Seen = { looks: [], written: [], cleared: 0, stateWrites: [], kv }
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  const seen: Seen = { looks: [], written: [], cleared: 0, stateWrites: [], stateAsked: [], kv }
+  on('command.register', () => ({ value: { command: 'cwallpaper' } }))
   on('theme.set', (_: unknown, e: unknown) => { seen.looks.push(e as Look); return { value: { isDrawn: true, requestId: 'backdrop' } } })
   on('theme.clear', () => { seen.cleared += 1; return { value: { isDrawn: false, reason: 'cleared' } } })
   on('config.set', (_: unknown, e: { key: string; value: unknown }) => {
@@ -82,10 +84,16 @@ async function begin(
     return { value: opts.answer ? opts.answer(name, e.value) : e.value }
   })
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('state.get', (_: unknown, e: { key: string }) => ({ value: { value: kv.get(e.key), version: 1 } }))
-  on('state.set', (_: unknown, e: { key: string; value: unknown }) => {
+  // The session values are the plugin's own: `{ plugin: 'CWallpaper', key }`. A value asked for or written under
+  // another plugin's name is recorded but neither found nor kept, so a mod that still says 'wallpaper' sees none.
+  on('state.get', (_: unknown, e: { plugin?: string; key: string }) => {
+    seen.stateAsked.push(`${String(e.plugin)}/${e.key}`)
+    return { value: { value: e.plugin === 'CWallpaper' ? kv.get(e.key) : undefined, version: 1 } }
+  })
+  on('state.set', (_: unknown, e: { plugin?: string; key: string; value: unknown }) => {
+    seen.stateAsked.push(`${String(e.plugin)}/${e.key}`)
     seen.stateWrites.push([e.key, e.value])
-    kv.set(e.key, e.value)
+    if (e.plugin === 'CWallpaper') kv.set(e.key, e.value)
     return { value: { version: 2 } }
   })
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
@@ -109,6 +117,15 @@ test('a start with the option on off, and no look set by this mod, clears nothin
   expect(seen.looks.length).toBe(0)
 })
 
+test('every session value is the plugin\'s own: { plugin: \'CWallpaper\', key } with the keys paneOpen, lookSet and pendingWrites', async ($, on) => {
+  const seen = await begin($, on)
+  await said($, 'motion light')
+  await said($, 'settings')
+  expect(seen.stateAsked.length > 0).toBe(true)
+  for (const asked of seen.stateAsked) expect([asked, /^CWallpaper\/(paneOpen|lookSet|pendingWrites)$/.test(asked)]).toEqual([asked, true])
+  expect(seen.stateAsked.some(a => a.startsWith('wallpaper/'))).toBe(false)
+})
+
 test('a start with the option on on sets the look and notes it in the session (lookSet)', async ($, on) => {
   const seen = await begin($, on)
   expect(seen.looks.length).toBe(1)
@@ -124,7 +141,7 @@ test('a start with the option on off, after this mod set the look this session (
 })
 
 for (const text of ['dim 20', 'blur 4', 'fps on', 'motion light', 'colors off', 'clear 90', 'time night', 'spinner off']) {
-  test(`/wallpaper ${text} while the wallpaper is off clears nothing`, { options: { on: false } }, async ($, on) => {
+  test(`/cwallpaper ${text} while the wallpaper is off clears nothing`, { options: { on: false } }, async ($, on) => {
     const seen = await begin($, on)
     const answer = await said($, text)
     expect(seen.written.length).toBe(1)
@@ -142,7 +159,7 @@ for (const key of ['motion:light', 'motion:off', 'clear:90', 'blur:4', 'dim:20',
   })
 }
 
-test('/wallpaper off while the wallpaper is on clears the theme once', async ($, on) => {
+test('/cwallpaper off while the wallpaper is on clears the theme once', async ($, on) => {
   const seen = await begin($, on)
   await said($, 'off')
   expect(seen.written).toEqual([{ field: 'on', value: false }])
@@ -156,7 +173,7 @@ test('the pane\'s on/off control pressed while the wallpaper is on clears the th
   expect(seen.cleared).toBe(1)
 })
 
-test('/wallpaper off while the wallpaper is already off clears nothing and writes nothing', { options: { on: false } }, async ($, on) => {
+test('/cwallpaper off while the wallpaper is already off clears nothing and writes nothing', { options: { on: false } }, async ($, on) => {
   const seen = await begin($, on)
   const answer = await said($, 'off')
   expect(seen.cleared).toBe(0)
@@ -187,7 +204,7 @@ const SAME: [string, Record<string, unknown>][] = [
   ['calm off', { wallpaper: 'blackhole' }],
 ]
 for (const [text, options] of SAME) {
-  test(`/wallpaper ${text} when it is already so writes nothing, sets no look again, and still answers with the status`, { options: options as never }, async ($, on) => {
+  test(`/cwallpaper ${text} when it is already so writes nothing, sets no look again, and still answers with the status`, { options: options as never }, async ($, on) => {
     const seen = await begin($, on)
     const before = seen.looks.length
     const answer = await said($, text)
@@ -302,7 +319,7 @@ test('after that press the look is the new wallpaper\'s, set once (after a comma
 
 // ------------------------------------------------ 5. two writes: both made, in order, nothing left pending
 
-test('/wallpaper blackhole while the wallpaper is off makes both writes in order and leaves no pending write', { options: { on: false } }, async ($, on) => {
+test('/cwallpaper blackhole while the wallpaper is off makes both writes in order and leaves no pending write', { options: { on: false } }, async ($, on) => {
   const seen = await begin($, on)
   await said($, 'blackhole')
   expect(seen.written).toEqual([{ field: 'wallpaper', value: 'blackhole' }, { field: 'on', value: true }])

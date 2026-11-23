@@ -1,6 +1,6 @@
 // Tests for the mod itself, hooks/register.tsx, as far as the test harness can drive it: the rules under "In the
 // mod" in core-contract.md. The mod is thin wiring over hooks/core/*: it reads its options, sets the theme,
-// answers the Backdrop render, runs `/wallpaper` and mounts the pane.
+// answers the Backdrop render, runs `/cwallpaper` and mounts the pane.
 //
 // HOW THE HARNESS HANDS THE MOD ITS OPTIONS, AND WHAT IT CAN SEE OF WHAT THE MOD WRITES (found out from the
 // type file of the plugin kit, then tried):
@@ -12,8 +12,9 @@
 //     is not talking to the mod at all.
 //   * `$.config.set({ key, value })` made BY THE MOD reaches a hook the test registers with `on('config.set', ...)`
 //     beneath every plugin. That hook sees `{ key, value }` where key is `<plugin>.<field>` (the field is the
-//     manifest key: 'wallpaper.kikiTime'); `field()` below cuts it at the first dot, so this file does not depend
-//     on how the engine spells the plugin's name. The hook must answer `{ value }` (or `{ deny }`).
+//     manifest key: 'CWallpaper.kikiTime'; the option that says which wallpaper is 'CWallpaper.wallpaper');
+//     `field()` below cuts it at the first dot for the many tests that do not care, and `rawKeys` keeps the whole
+//     key for the ones that pin the plugin's name. The hook must answer `{ value }` (or `{ deny }`).
 //   * After a `config.set` the harness does NOT hand the mod new options (register ran once). So a rule that
 //     says what the mod shows AFTER a command is a rule about the mod keeping its own copy of what it wrote.
 //     Those tests are marked "(after a command)" and are the only ones that depend on it; the others start from
@@ -27,16 +28,16 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { checkColors } from '../hooks/make-colors.js'
 
-const propsOf = (name: string, plugin = 'wallpaper') => ({ id: name, scene: name, plugin, glass: false }) as never
-const BACKDROP = { plugin: 'wallpaper', component: 'Backdrop', props: propsOf('kiki') } as const
+const propsOf = (name: string, plugin = 'CWallpaper') => ({ id: name, scene: name, plugin, glass: false }) as never
+const BACKDROP = { plugin: 'CWallpaper', component: 'Backdrop', props: propsOf('kiki') } as const
 const PANE = {
-  plugin: 'wallpaper',
+  plugin: 'CWallpaper',
   component: 'Pane',
-  requestId: 'wallpaper-settings',
+  requestId: 'cwallpaper-settings',
   props: { title: 'Wallpaper', isFocused: true, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
 } as const
-const SPINNER = { plugin: 'wallpaper', component: 'Spinner', props: { word: 'Thinking', message: null, suffix: '…', mode: 'thinking' } } as const
-const wallpaper = (args: string) => ({ command: 'wallpaper', args }) as never
+const SPINNER = { plugin: 'CWallpaper', component: 'Spinner', props: { word: 'Thinking', message: null, suffix: '…', mode: 'thinking' } } as const
+const wallpaper = (args: string) => ({ command: 'cwallpaper', args }) as never
 
 type Look = {
   backdrop?: { scene?: string; glass?: { blur?: number; opacity?: number; tint?: string } }
@@ -57,6 +58,10 @@ type Seen = {
   cleared: number
   stray: string[]
   storeWrites: string[]
+  /** Every `config.set` key as the mod asked for it, whole. */
+  rawKeys: string[]
+  /** Every command the mod registered, as it gave it. */
+  registered: { name?: string; description?: string; argumentHint?: string }[]
   clock: ReturnType<typeof mock.clock>
 }
 
@@ -67,11 +72,14 @@ type Seen = {
 async function begin($: Ctx, on: Ctx, opts: { store?: Record<string, unknown>; now?: number; start?: boolean } = {}): Promise<Seen> {
   const clock = mock.clock(on, opts.now === undefined ? undefined : { now: opts.now })
   const kept = opts.store ?? {}
-  const seen: Seen = { looks: [], written: [], opened: [], cleared: 0, stray: [], storeWrites: [], clock }
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
+  const seen: Seen = { looks: [], written: [], opened: [], cleared: 0, stray: [], storeWrites: [], rawKeys: [], registered: [], clock }
+  on('command.register', (_: unknown, e: { name?: string; description?: string; argumentHint?: string }) => {
+    seen.registered.push(e)
+    return { value: { command: String(e.name) } }
+  })
   on('theme.set', (_: unknown, e: unknown) => { seen.looks.push(e as Look); return { value: { isDrawn: true, requestId: 'backdrop' } } })
   on('theme.clear', () => { seen.cleared += 1; return { value: { isDrawn: false, reason: 'cleared' } } })
-  on('config.set', (_: unknown, e: { key: string; value: unknown }) => { seen.written.push({ field: field(e.key), value: e.value }); return { value: e.value } })
+  on('config.set', (_: unknown, e: { key: string; value: unknown }) => { seen.rawKeys.push(e.key); seen.written.push({ field: field(e.key), value: e.value }); return { value: e.value } })
   on('ui.open', (_: unknown, e: { id?: string }) => { seen.opened.push(e); return { value: { isPlaced: true } } })
   on('store.get', (_: unknown, e: { key: string }) => ({ value: kept[e.key] }))
   on('store.set', (_: unknown, e: { key: string }) => { seen.storeWrites.push(e.key); return { value: undefined } })
@@ -101,7 +109,7 @@ const svgsOf = async (ui: { drawn: () => Promise<unknown> }): Promise<Record<str
   return out
 }
 /** The Backdrop of one scene, as the surface asks for it: every picture drawn, with its props. */
-const drawnBy = async ($: Ctx, name = 'kiki', surface: 'desktop' | 'mobile' = 'desktop', plugin = 'wallpaper'): Promise<Record<string, unknown>[]> => {
+const drawnBy = async ($: Ctx, name = 'kiki', surface: 'desktop' | 'mobile' = 'desktop', plugin = 'CWallpaper'): Promise<Record<string, unknown>[]> => {
   const ui = await $.ui.mount({ ...BACKDROP, surface, props: propsOf(name, plugin) })
   const out = await svgsOf(ui)
   await ui.unmount()
@@ -232,7 +240,7 @@ for (const name of ['picture', 'video', 'my-picture', 'my-video']) {
   })
 }
 
-// ------------------------------------------------ what `/wallpaper` writes
+// ------------------------------------------------ what `/cwallpaper` writes
 
 /**
  * Commands that write one option through `$.config.set`, and what they write; the wallpaper is Kiki and on unless
@@ -257,7 +265,7 @@ const WRITES: [string, string, unknown, Record<string, unknown>?][] = [
   ['spinner off', 'kikiSpinner', false],
 ]
 for (const [text, key, value, options] of WRITES) {
-  test(`/wallpaper ${text} writes the option ${key} through config.set, and answers with the status line`, { options: (options ?? {}) as never }, async ($, on) => {
+  test(`/cwallpaper ${text} writes the option ${key} through config.set, and answers with the status line`, { options: (options ?? {}) as never }, async ($, on) => {
     const seen = await begin($, on)
     const answer = await $.command.run(wallpaper(text))
     expect(seen.written).toEqual([{ field: key, value }])
@@ -268,7 +276,7 @@ for (const [text, key, value, options] of WRITES) {
   })
 }
 
-test('/wallpaper on, while the look is off, writes `on`', { options: { on: false } }, async ($, on) => {
+test('/cwallpaper on, while the look is off, writes `on`', { options: { on: false } }, async ($, on) => {
   const seen = await begin($, on)
   await $.command.run(wallpaper('on'))
   expect(seen.written).toEqual([{ field: 'on', value: true }])
@@ -280,7 +288,7 @@ test('a wallpaper\'s name while the look is off writes the wallpaper, then `on`'
   expect(seen.written).toEqual([{ field: 'wallpaper', value: 'blackhole' }, { field: 'on', value: true }])
 })
 
-test('/wallpaper blackhole while the look is on writes the wallpaper alone', { options: { wallpaper: 'blackhole' } }, async ($, on) => {
+test('/cwallpaper blackhole while the look is on writes the wallpaper alone', { options: { wallpaper: 'blackhole' } }, async ($, on) => {
   const seen = await begin($, on)
   await $.command.run(wallpaper('kiki'))
   expect(seen.written).toEqual([{ field: 'wallpaper', value: 'kiki' }])
@@ -296,7 +304,7 @@ test('a command that is wrong writes nothing, answers with its error, and runs n
   }
   expect(await say('motion steps')).toMatch(/motion/)
   expect(await say('moonbase')).toMatch(/moonbase/)
-  expect(await say('moonbase')).toMatch(/\/wallpaper help/)
+  expect(await say('moonbase')).toMatch(/\/cwallpaper help/)
   expect(await say('time dusk')).toMatch(/time/)
   // The loaders are gone: no ffmpeg, no file, only the words.
   for (const text of ['picture C:/Pictures/harbour.png', 'video C:/Videos/waves.mp4']) {
@@ -330,7 +338,7 @@ test('the status line of Kiki holds her time of day', { options: { kikiTime: 'ni
   expect(String((await $.command.run(wallpaper(''))).text)).toMatch(/Kiki time: night/)
 })
 
-test('/wallpaper help lists the commands and the wallpapers, and says nothing of a picture or a video', async ($, on) => {
+test('/cwallpaper help lists the commands and the wallpapers, and says nothing of a picture or a video', async ($, on) => {
   await begin($, on)
   const help = String((await $.command.run(wallpaper('help'))).text)
   for (const word of ['settings', 'kiki', 'blackhole', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'time', 'spinner']) {
@@ -340,13 +348,89 @@ test('/wallpaper help lists the commands and the wallpapers, and says nothing of
   expect(/valley|weather/i.test(help)).toBe(false)
 })
 
-test('/wallpaper settings opens the pane', async ($, on) => {
+test('/cwallpaper settings opens the pane', async ($, on) => {
   const seen = await begin($, on)
   const answer = await $.command.run(wallpaper('settings'))
   expect(seen.opened.length).toBe(1)
-  expect(seen.opened[0]?.id).toBe('wallpaper-settings')
+  expect(seen.opened[0]?.id).toBe('cwallpaper-settings')
   expect(String(answer.text)).toMatch(/open/i)
   expect(seen.written).toEqual([])
+})
+
+// ------------------------------------------------ the name: CWallpaper, /cwallpaper
+
+test('the one command the mod registers is cwallpaper, in lower case, and wallpaper is not registered', async ($, on) => {
+  const seen = await begin($, on)
+  expect(seen.registered.map(r => r.name)).toEqual(['cwallpaper'])
+  for (const r of seen.registered) {
+    expect(String(r.description).includes('/wallpaper')).toBe(false)
+    expect(String(r.argumentHint).includes('/wallpaper')).toBe(false)
+  }
+})
+
+test('nothing listens for the old command wallpaper: it changes nothing and does not answer as the status', async ($, on) => {
+  const seen = await begin($, on)
+  const before = seen.looks.length
+  let text = ''
+  try {
+    text = String(((await $.command.run({ command: 'wallpaper', args: 'off' } as never)) as { text?: unknown }).text)
+  } catch {
+    text = ''
+  }
+  expect(seen.written).toEqual([])
+  expect(seen.cleared).toBe(0)
+  expect(seen.looks.length).toBe(before)
+  expect(/The wallpaper is/.test(text)).toBe(false)
+})
+
+test('the options are written under the plugin\'s name, CWallpaper.<key>, the wallpaper option included', async ($, on) => {
+  const seen = await begin($, on)
+  await $.command.run(wallpaper('blackhole'))
+  await $.command.run(wallpaper('dim 20'))
+  await $.command.run(wallpaper('size small'))
+  expect(seen.rawKeys).toEqual(['CWallpaper.wallpaper', 'CWallpaper.dim', 'CWallpaper.blackholeSize'])
+})
+
+test('a pane press writes under CWallpaper.<key> too', async ($, on) => {
+  const seen = await begin($, on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'motion:light' })
+  await ui.unmount()
+  expect(seen.rawKeys).toEqual(['CWallpaper.motion'])
+})
+
+test('no text the mod prints names /wallpaper: the help, the status, every error, the pane\'s answer', async ($, on) => {
+  const seen = await begin($, on)
+  const texts: string[] = []
+  for (const text of [
+    'help', '', 'settings', 'moonbase', 'clear 101', 'clear abc', 'motion steps', 'time dusk', 'spinner maybe', 'size large', 'calm on',
+    'picture C:/Pictures/a.png', 'video C:/Videos/b.mp4', 'colors maybe', 'on now', 'blackhole now',
+  ]) {
+    texts.push(String(((await $.command.run(wallpaper(text))) as { text: string }).text))
+  }
+  for (const [i, t] of texts.entries()) expect([i, t.includes('/wallpaper')]).toEqual([i, false])
+  // The words that name the command say /cwallpaper.
+  expect(texts[0]).toMatch(/\/cwallpaper/)
+  expect(texts[3]).toMatch(/\/cwallpaper help/)
+  // The common noun stays where it is one.
+  expect(texts[2]).toMatch(/The wallpaper settings are open\./)
+  expect(seen.registered.length).toBe(1)
+})
+
+test('the status of a wallpaper that is off does not name /wallpaper either', { options: { on: false } }, async ($, on) => {
+  await begin($, on)
+  const text = String(((await $.command.run(wallpaper(''))) as { text: string }).text)
+  expect(text).toMatch(/The wallpaper is off/)
+  expect(text.includes('/wallpaper')).toBe(false)
+})
+
+test('no text the pane shows names /wallpaper', { options: { fps: true } }, async ($, on) => {
+  await begin($, on)
+  for (const surface of ['desktop', 'terminal'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect([surface, JSON.stringify(await ui.drawn()).includes('/wallpaper')]).toEqual([surface, false])
+    await ui.unmount()
+  }
 })
 
 // ------------------------------------------------ after a command (the mod keeps its own copy of what it wrote)
@@ -482,10 +566,20 @@ test('with Show FPS on, an svg wallpaper\'s pane says its frame rate cannot be m
   }
 })
 
-test('with Show FPS on and the black hole on, there is no note: a shader draws its own frame rate', { options: { fps: true, wallpaper: 'blackhole' } }, async ($, on) => {
+test('with Show FPS on and the black hole on, the note says where it is drawn, not that it cannot be measured', { options: { fps: true, wallpaper: 'blackhole' } }, async ($, on) => {
+  await begin($, on)
+  for (const surface of ['desktop', 'terminal'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect([surface, await shows(ui, /Drawn at the top left of the chat\./)]).toEqual([surface, true])
+    expect([surface, await shows(ui, /cannot be measured/i)]).toEqual([surface, false])
+    await ui.unmount()
+  }
+})
+
+test('with Show FPS off the black hole\'s pane has no note at all', { options: { fps: false, wallpaper: 'blackhole' } }, async ($, on) => {
   await begin($, on)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await shows(ui, /cannot be measured/i)).toBe(false)
+  expect(await shows(ui, /top left/i)).toBe(false)
   expect(await shows(ui, /frame rate/i)).toBe(false)
   await ui.unmount()
 })
