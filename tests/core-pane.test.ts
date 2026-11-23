@@ -60,8 +60,10 @@ const STAND = {
 } as never
 const ALL = [...WALLPAPERS, STAND] as never
 
-const settings = (over: Over = {}, kiki: Over = {}, stand: Over = {}) =>
-  ({
+/** `over.hole`, when given, holds the black hole's own settings (size, calm). */
+const settings = (over: Over = {}, kiki: Over = {}, stand: Over = {}) => {
+  const { hole, ...top } = over as Over & { hole?: Over }
+  return {
     on: true,
     wallpaper: 'kiki',
     motion: 'smooth',
@@ -70,9 +72,10 @@ const settings = (over: Over = {}, kiki: Over = {}, stand: Over = {}) =>
     dim: 30,
     colors: true,
     fps: false,
-    ...over,
-    own: { kiki: { time: 'auto', spinner: true, ...kiki }, blackhole: {}, stand: { mood: 'calm', glow: false, ...stand } },
-  }) as never
+    ...top,
+    own: { kiki: { time: 'auto', spinner: true, ...kiki }, blackhole: { size: 'medium', calm: false, ...hole }, stand: { mood: 'calm', glow: false, ...stand } },
+  } as never
+}
 
 const rows = (over: Over = {}, kiki: Over = {}, stand: Over = {}, wallpapers: unknown = WALLPAPERS): Row[] =>
   paneRows(settings(over, kiki, stand), wallpapers as never) as unknown as Row[]
@@ -174,10 +177,19 @@ test('the heading holds the current wallpaper\'s label, before its own options',
   expect(hole.find(r => r.kind === 'heading')?.text).toMatch(/Black hole/)
 })
 
-test('no Kiki row shows while the black hole is on, and the black hole has none of its own', () => {
+test('no Kiki row shows while the black hole is on; its own rows are its size and its calm', () => {
   const hole = rows({ wallpaper: 'blackhole' })
-  expect(names(hole)).toEqual([...COMMON_ROWS, 'heading'])
+  expect(names(hole)).toEqual([...COMMON_ROWS, 'heading', 'blackholeSize', 'blackholeCalm'])
   expect(allControls(hole).some(c => c.key.startsWith('kiki'))).toBe(false)
+  for (const size of ['small', 'medium', 'large']) {
+    const list = controlsOf(rows({ wallpaper: 'blackhole', hole: { size } }), 'blackholeSize')
+    expect(list.map(c => c.value)).toEqual(['small', 'medium', 'large'])
+    expect([size, list.map(c => c.current === true)]).toEqual([size, ['small', 'medium', 'large'].map(v => v === size)])
+  }
+  for (const today of [true, false]) {
+    const list = controlsOf(rows({ wallpaper: 'blackhole', hole: { calm: today } }), 'blackholeCalm')
+    expect([today, list.length, list[0]?.value]).toEqual([today, 1, !today])
+  }
   // And the other way round: nothing of the black hole's or a stand-in's shows with Kiki.
   const kiki = rows()
   expect(allControls(kiki).some(c => c.key.startsWith('blackhole') || c.key.startsWith('stand'))).toBe(false)
@@ -197,7 +209,7 @@ test('only the current wallpaper\'s own options show, from the list the pane is 
 })
 
 test('with Show FPS on, an svg wallpaper gets a note that its frame rate cannot be measured, straight after the FPS row', () => {
-  for (const wallpaper of ['kiki', 'blackhole']) {
+  for (const wallpaper of ['kiki']) {
     const list = rows({ wallpaper, fps: true })
     const notes = list.filter(r => r.kind === 'note')
     expect([wallpaper, notes.length]).toEqual([wallpaper, 1])
@@ -212,6 +224,8 @@ test('with Show FPS on, an svg wallpaper gets a note that its frame rate cannot 
 test('no note shows with Show FPS off, nor for a shader wallpaper, whose frame rate can be measured', () => {
   expect(rows({ fps: false }).some(r => r.kind === 'note')).toBe(false)
   expect(rows({ wallpaper: 'blackhole', fps: false }).some(r => r.kind === 'note')).toBe(false)
+  // The black hole is a shader wallpaper now: it draws its own frame rate.
+  expect(rows({ wallpaper: 'blackhole', fps: true }).some(r => r.kind === 'note')).toBe(false)
   expect(rows({ wallpaper: 'stand', fps: true }, {}, {}, ALL).some(r => r.kind === 'note')).toBe(false)
   expect(rows({ wallpaper: 'stand', fps: false }, {}, {}, ALL).some(r => r.kind === 'note')).toBe(false)
 })
@@ -222,7 +236,7 @@ test('the pane has no row for a picture or a video of your own', () => {
 })
 
 test('paneRows is pure: plain data, equal for equal settings, changing nothing it is given', () => {
-  const s = settings({ wallpaper: 'blackhole', clear: 40, fps: true })
+  const s = settings({ wallpaper: 'blackhole', clear: 40, fps: true, hole: { size: 'large' } })
   const before = JSON.stringify(s)
   const a = paneRows(s, WALLPAPERS as never)
   expect(JSON.parse(JSON.stringify(a))).toEqual(a)

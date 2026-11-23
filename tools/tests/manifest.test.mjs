@@ -115,9 +115,13 @@ describe('plugin.json userConfig is what optionSpecs(WALLPAPERS) lists', () => {
     }
   })
 
-  it('has the ten options of the contract', async () => {
+  it('has the twelve options of the contract: the ten common and Kiki\'s, then the black hole\'s size and calm', async () => {
     const list = await specs()
-    assert.deepEqual(list.map(s => s.key), ['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'kikiTime', 'kikiSpinner'])
+    assert.deepEqual(list.map(s => s.key), ['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'kikiTime', 'kikiSpinner', 'blackholeSize', 'blackholeCalm'])
+    assert.deepEqual(list.slice(10).map(s => s.title), ['Black hole: size', 'Black hole: calmer motion'])
+    assert.deepEqual(list[10].choices, ['small', 'medium', 'large'])
+    assert.equal(list[10].default, 'medium')
+    assert.equal(list[11].default, false)
   })
 })
 

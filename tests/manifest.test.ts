@@ -60,8 +60,8 @@ async function loadWith($: any, on: any): Promise<string> {
   }
 }
 
-test('the list the manifest is compared with holds the ten options in the contract\'s order', () => {
-  expect(specs.map(s => s.key)).toEqual(['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'kikiTime', 'kikiSpinner'])
+test('the list the manifest is compared with holds the twelve options in the contract\'s order', () => {
+  expect(specs.map(s => s.key)).toEqual(['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'kikiTime', 'kikiSpinner', 'blackholeSize', 'blackholeCalm'])
   expect(specs.map(s => s.title)).toEqual([
     'Wallpaper',
     'Wallpaper: on',
@@ -73,9 +73,12 @@ test('the list the manifest is compared with holds the ten options in the contra
     'Show FPS',
     'Kiki: time of day',
     'Kiki: cat spinner',
+    'Black hole: size',
+    'Black hole: calmer motion',
   ])
-  expect(specs.map(s => s.type)).toEqual(['choice', 'boolean', 'choice', 'number', 'number', 'number', 'boolean', 'boolean', 'choice', 'boolean'])
-  expect(specs.map(s => s.default)).toEqual(['kiki', true, 'smooth', 100, 0, 30, true, false, 'auto', true])
+  expect(specs.map(s => s.type)).toEqual(['choice', 'boolean', 'choice', 'number', 'number', 'number', 'boolean', 'boolean', 'choice', 'boolean', 'choice', 'boolean'])
+  expect(specs.map(s => s.default)).toEqual(['kiki', true, 'smooth', 100, 0, 30, true, false, 'auto', true, 'medium', false])
+  expect(specs[10]?.choices).toEqual(['small', 'medium', 'large'])
   expect(specs[0]?.choices).toEqual(['kiki', 'blackhole'])
   expect(specs[2]?.choices).toEqual(['smooth', 'light', 'off'])
   expect(specs[8]?.choices).toEqual(['auto', 'day', 'sunset', 'night'])
@@ -110,6 +113,22 @@ for (const spec of specs) {
       if (shown !== undefined) expect(String((await $.command.run(wallpaper(''))).text)).toMatch(shown)
     })
   }
+}
+
+// The black hole's size is not on the status line: the Shader's `values` of its Backdrop show it, with the calm.
+const BACKDROP = { plugin: 'wallpaper', component: 'Backdrop', props: { id: 'blackhole', scene: 'blackhole', plugin: 'wallpaper', glass: false } } as never
+for (const [option, value, name, number] of [
+  ['blackholeSize', 'small', 'size', 0.8],
+  ['blackholeSize', 'large', 'size', 1.25],
+  ['blackholeCalm', true, 'calm', 1],
+] as const) {
+  test(`the manifest takes ${option} = ${String(value)}, and the black hole's Shader is handed ${name} ${number}`, { options: { wallpaper: 'blackhole', [option]: value } as never }, async ($, on) => {
+    expect(await loadWith($, on)).toBe('')
+    const ui = await ($ as any).ui.mount({ ...(BACKDROP as object), surface: 'desktop' })
+    const shader = await ui.find({ type: 'Shader' })
+    await ui.unmount()
+    expect((shader?.props as { values?: Record<string, number> } | undefined)?.values?.[name]).toBe(number)
+  })
 }
 
 test('the old spinner key and the keys of the removed loaders are not declared', { options: { spinner: ['x'], theme: ['x'], isOn: ['x'], picture: ['x'], video: ['x'], film: ['x'], steps: ['x'] } as never }, async ($, on) => {

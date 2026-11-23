@@ -1,30 +1,38 @@
-// Tests for the black hole inside the mod: hooks/register.tsx. Same harness as backdrop.test.tsx (mock clock, a
-// stubbed theme.set, the Backdrop mounted and its `Svg` element's `source` read), rewritten for the rebuild: what
-// 1.9.0 had these tests set with `/wallpaper` commands and keep in the mod's store is now the plugin's options
-// (the manifest's `userConfig`, handed to the test as `{ options }`), and what a command or a button does is write
-// one option through `$.config.set`, which the test sees with `on('config.set', ...)`. See core-backdrop.test.tsx
-// for how the harness drives options and what it cannot see.
+// Tests for the black hole inside the mod: hooks/register.tsx, hooks/wallpapers/blackhole/index.ts. Same harness as
+// backdrop.test.tsx (mock clock, a stubbed theme.set, the Backdrop mounted), rewritten for the shader black hole:
+// the wallpaper is of kind 'shader', and the Backdrop answers a `Shader` element over one `Svg`. What 1.9.0's
+// thirty SVG frames were tested for (their text, loop, cost and field) is gone with them; so is the 'light plays
+// more slowly' check. See core-backdrop.test.tsx for how the harness drives options and what the mod writes with
+// `$.config.set`.
 //
-// THE CONTRACT these tests pin (the field's is in blackhole.test.ts, the builder's in blackhole-svg.test.ts):
+// THE CONTRACT these tests pin (blackhole-contract.md):
 //
-//   The option `wallpaper` = 'blackhole' makes the theme.set carry `backdrop.scene === 'blackhole'`, with the black
-//   hole's own colors (not "Kiki night"); the Backdrop for that scene is one `Svg` whose source is the black hole's
-//   picture (not Kiki's), under 131,072 characters, with a non-empty alt, on the desktop and the phone.
-//   `/wallpaper blackhole`, `/wallpaper black-hole` and `/wallpaper hole` write the option `wallpaper` =
-//   'blackhole' (the answer says "The wallpaper is Black hole."); `/wallpaper kiki` writes 'kiki'.
-//   `/wallpaper help` names `blackhole`; a wrong word is an error that names it and points to `/wallpaper help`.
-//   The pane has a button `wallpaper:blackhole`, labelled "Black hole", beside Kiki's `wallpaper:kiki`, and pressing
-//   it writes the option and nothing else.
-//   The option `motion` = 'off' gives the still picture (no animation, no keyframes); smooth and light animate.
-//   The colors handed to the app with it are a dark set with an amber accent: the dark `gray-900` is near-black,
-//   `role-accent-fill` is amber, the label is not "Kiki night", and the mod's own checker (`checkColors` of
-//   make-colors.js, as `makeColors` runs it) reports nothing that starts "Desktop won't paint".
-//   Another mod's backdrop of that name is still left to it.
+//   With the option `wallpaper` = 'blackhole' the theme.set carries `backdrop.scene === 'blackhole'`, with the
+//   black hole's own colors, and the Backdrop answers ONE `Shader` element whose only child is ONE `Svg`:
+//     * the Shader's `module` is './shader.ts' (the harness shows the engine's reading of it: the path
+//       'hooks/wallpapers/blackhole/shader.ts', and this file accepts either spelling);
+//     * its `values` hold exactly the five names calm, dim, fps, size and speed, each a number inside its range
+//       (dim 0 to 0.8, speed 0 to 1, fps 0 to 1, calm 0 to 1, size 0.6 to 1.4), following the options: dim is the
+//       option over 100 (30 gives 0.3), motion light gives speed 0.5 (smooth 1), Show FPS gives fps 1, the option
+//       `blackholeCalm` gives calm 1, the option `blackholeSize` small, medium and large give size 0.8, 1, 1.25;
+//     * the Svg's source is the still picture: at most 124,000 characters, no animation, and the SAME string under
+//       the shader and alone.
+//   With motion off the Backdrop answers a bare `Svg` and no `Shader` at all.
+//   `/wallpaper blackhole`, `black-hole` and `hole` write the option `wallpaper`; `/wallpaper size large` and
+//   `/wallpaper calm on` write `blackholeSize` and `blackholeCalm` while the black hole is on; while Kiki is on they
+//   are errors that say whose they are ("Size belongs to Black hole. The wallpaper is Kiki.").
+//   The pane with the black hole on shows its two own rows (buttons `blackholeSize:small|medium|large` and
+//   `blackholeCalm:<opposite>`) and no row of Kiki's, and with Show FPS on no "cannot be measured" note.
+//   The colors are a dark set with an amber accent that the app will paint. Another mod's backdrop of that name is
+//   still left to it.
 //
-// Dropped from 1.9.0's version, with the reasons: "the choice is stored: a new session reads it back" (nothing is
-// stored by the mod: a new session reads the option, and 'a saved black hole' below is that); "light plays more
-// slowly than smooth" through the Backdrop (blackhole-svg.test.ts pins it on the builder, which is all the mod
-// passes on); the wrong word carrying the whole help (the contract points to `/wallpaper help` instead).
+// WHAT THE HARNESS SHOWS OF THE SHADER: the mounted tree as plain data, with the element's `type` ('Shader'),
+// its `props` (`module`, `values`) and its `children` (the Svg), as the engine validated them (one Shader at most,
+// over exactly one Svg, in a Backdrop). It does NOT show the shader file's code, whether the file compiles, what the
+// GPU draws, the cost `claude plugin validate` reports, or how the app falls back to the Svg: those are the Node
+// tests' (tools/tests) and the owner's eyes.
+//
+// (after a command) tests assume the mod keeps its own copy of what it wrote, as core-backdrop.test.tsx explains.
 import { expect, mock, test } from 'claude-code/testing'
 
 import { checkColors } from '../hooks/make-colors.js'
@@ -40,6 +48,7 @@ const PANE = {
 } as const
 const wallpaper = (args: string) => ({ command: 'wallpaper', args }) as never
 const HOLE = { options: { wallpaper: 'blackhole' } }
+const CAP = 124_000
 
 type Look = {
   backdrop?: { scene?: string }
@@ -65,7 +74,6 @@ async function begin($: Ctx, on: Ctx): Promise<{ looks: Look[]; written: Written
   return { looks, written }
 }
 
-/** Every Svg element drawn, with its props, and every node of a given type. */
 const walk = (node: unknown, visit: (el: Node) => void): void => {
   if (!node || typeof node !== 'object') return
   if (Array.isArray(node)) { node.forEach(n => walk(n, visit)); return }
@@ -74,29 +82,25 @@ const walk = (node: unknown, visit: (el: Node) => void): void => {
   walk(el.children, visit)
   walk(el.props?.children, visit)
 }
-const svgs = async (ui: { drawn: () => Promise<unknown> }): Promise<Record<string, unknown>[]> => {
-  const out: Record<string, unknown>[] = []
-  walk(await ui.drawn(), el => { if (el.type === 'Svg' && typeof el.props?.source === 'string') out.push(el.props) })
-  return out
-}
-const drawnBy = async ($: Ctx, name: string, surface: 'desktop' | 'mobile' = 'desktop', plugin = 'wallpaper'): Promise<Record<string, unknown>[]> => {
-  const ui = await $.ui.mount({ ...BACKDROP, surface, props: propsOf(name, plugin) })
-  const out = await svgs(ui)
-  await ui.unmount()
-  return out
-}
-const sourceOf = async ($: Ctx, name = 'blackhole'): Promise<string> => String((await drawnBy($, name))[0]?.source ?? '')
+const kidsOf = (el: Node): Node[] => (Array.isArray(el.children) ? (el.children as unknown[]) : []).filter((k): k is Node => !!k && typeof k === 'object')
 
-const sheet = (s: string): string => [...s.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(m => m[1] ?? '').join('')
-/** The longest loop in seconds, the first time in each `animation` rule. */
-const loopSeconds = (s: string): number =>
-  Math.max(
-    0,
-    ...[...sheet(s).matchAll(/animation(?:-duration)?\s*:\s*([^;}]*)/g)].flatMap(m => {
-      const t = /(?:^|\s)(\d*\.?\d+)(ms|s)(?=\s|;|}|$)/.exec(m[1] ?? '')
-      return t ? [Number(t[1]) / (t[2] === 'ms' ? 1000 : 1)] : []
-    }),
-  )
+type Drawn = { shaders: Node[]; svgs: Record<string, unknown>[]; root: Node }
+/** The Backdrop of the black hole as the surface asks for it: every Shader and every Svg of the answer. */
+const drawnBy = async ($: Ctx, surface: 'desktop' | 'mobile' = 'desktop', name = 'blackhole', plugin = 'wallpaper'): Promise<Drawn> => {
+  const ui = await $.ui.mount({ ...BACKDROP, surface, props: propsOf(name, plugin) })
+  const tree = await ui.drawn()
+  await ui.unmount()
+  const shaders: Node[] = []
+  const svgs: Record<string, unknown>[] = []
+  walk(tree, el => {
+    if (el.type === 'Shader') shaders.push(el)
+    if (el.type === 'Svg' && typeof el.props?.source === 'string') svgs.push(el.props)
+  })
+  return { shaders, svgs, root: tree as Node }
+}
+const valuesOf = (d: Drawn): Record<string, number> => (d.shaders[0]?.props?.values ?? {}) as Record<string, number>
+
+const RANGES: Record<string, [number, number]> = { dim: [0, 0.8], speed: [0, 1], fps: [0, 1], calm: [0, 1], size: [0.6, 1.4] }
 
 const rgb = (hex: string | undefined): [number, number, number] | undefined => {
   const m = /^#([0-9a-fA-F]{6})$/.exec(hex ?? '')
@@ -110,6 +114,112 @@ const hueOf = ([r, g, b]: [number, number, number]): number => {
   const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4
   return (h * 60 + 360) % 360
 }
+
+// ------------------------------------------------ the Shader over one Svg
+
+test('the black hole\'s Backdrop is one Shader over one Svg, on the desktop and the phone', HOLE, async ($, on) => {
+  await begin($, on)
+  for (const surface of ['desktop', 'mobile'] as const) {
+    const d = await drawnBy($, surface)
+    expect([surface, d.shaders.length]).toEqual([surface, 1])
+    expect([surface, d.svgs.length]).toEqual([surface, 1])
+    const shader = d.shaders[0] as Node
+    const kids = kidsOf(shader)
+    expect([surface, kids.length, kids[0]?.type]).toEqual([surface, 1, 'Svg'])
+    // The wallpaper writes './shader.ts'; the harness shows the engine's reading of it, the path from the
+    // plugin's folder, so either spelling is the black hole's own file next to its index.ts.
+    expect([surface, typeof shader.props?.module]).toEqual([surface, 'string'])
+    expect([surface, /^(\.\/shader\.ts|hooks\/wallpapers\/blackhole\/shader\.ts)$/.test(String(shader.props?.module).replace(/\\/g, '/'))]).toEqual([surface, true])
+    const leaf = d.svgs[0] ?? {}
+    expect(leaf.isInteractive === true).toBe(false)
+    expect(String(leaf.alt).length > 0).toBe(true)
+  }
+})
+
+test('the Shader\'s values are exactly calm, dim, fps, size and speed, each a number inside its range', HOLE, async ($, on) => {
+  await begin($, on)
+  const values = valuesOf(await drawnBy($))
+  expect(Object.keys(values).sort()).toEqual(['calm', 'dim', 'fps', 'size', 'speed'])
+  for (const [name, [lo, hi]] of Object.entries(RANGES)) {
+    const v = values[name]
+    expect([name, typeof v, Number.isFinite(v)]).toEqual([name, 'number', true])
+    expect([name, (v ?? -1) >= lo && (v ?? 99) <= hi]).toEqual([name, true])
+  }
+})
+
+test('with the options at their defaults the values are dim 0.3, speed 1, fps 0, calm 0, size 1', HOLE, async ($, on) => {
+  await begin($, on)
+  expect(valuesOf(await drawnBy($))).toEqual({ dim: 0.3, speed: 1, fps: 0, calm: 0, size: 1 })
+})
+
+const FOLLOW: [string, Record<string, unknown>, Record<string, number>][] = [
+  ['dim 0', { dim: 0 }, { dim: 0 }],
+  ['dim 80', { dim: 80 }, { dim: 0.8 }],
+  ['dim 55', { dim: 55 }, { dim: 0.55 }],
+  ['motion light', { motion: 'light' }, { speed: 0.5 }],
+  ['motion smooth', { motion: 'smooth' }, { speed: 1 }],
+  ['Show FPS', { fps: true }, { fps: 1 }],
+  ['calm on', { blackholeCalm: true }, { calm: 1 }],
+  ['calm off', { blackholeCalm: false }, { calm: 0 }],
+  ['size small', { blackholeSize: 'small' }, { size: 0.8 }],
+  ['size medium', { blackholeSize: 'medium' }, { size: 1 }],
+  ['size large', { blackholeSize: 'large' }, { size: 1.25 }],
+]
+for (const [label, options, expected] of FOLLOW) {
+  test(`the Shader's values follow the options: ${label}`, { options: { wallpaper: 'blackhole', ...options } as never }, async ($, on) => {
+    await begin($, on)
+    const d = await drawnBy($)
+    expect(d.shaders.length).toBe(1)
+    expect(valuesOf(d)).toMatchObject(expected)
+    expect(Object.keys(valuesOf(d)).sort()).toEqual(['calm', 'dim', 'fps', 'size', 'speed'])
+  })
+}
+
+test('the Shader\'s values at the other ends: everything on at once', { options: { wallpaper: 'blackhole', motion: 'light', fps: true, dim: 80, blackholeCalm: true, blackholeSize: 'large' } as never }, async ($, on) => {
+  await begin($, on)
+  expect(valuesOf(await drawnBy($))).toEqual({ dim: 0.8, speed: 0.5, fps: 1, calm: 1, size: 1.25 })
+})
+
+// ------------------------------------------------ the still picture, under the shader and alone
+
+const stills: Record<string, string> = {}
+
+test('under the Shader the Svg is the still picture: under the size cap, no animation', { options: { wallpaper: 'blackhole', motion: 'smooth' } }, async ($, on) => {
+  await begin($, on)
+  const d = await drawnBy($)
+  const source = String(d.svgs[0]?.source)
+  stills.shader = source
+  expect(source.startsWith('<svg')).toBe(true)
+  expect(source.length <= CAP).toBe(true)
+  expect(source.includes('@keyframes')).toBe(false)
+  expect(source.includes('<animate')).toBe(false)
+  expect(source.includes('animation')).toBe(false)
+})
+
+test('with motion off the Backdrop is a bare Svg and no Shader, and its picture has no animation', { options: { wallpaper: 'blackhole', motion: 'off' } }, async ($, on) => {
+  await begin($, on)
+  for (const surface of ['desktop', 'mobile'] as const) {
+    const d = await drawnBy($, surface)
+    expect([surface, d.shaders.length]).toEqual([surface, 0])
+    expect([surface, d.svgs.length]).toEqual([surface, 1])
+    expect([surface, d.root.type]).toEqual([surface, 'Svg'])
+    const source = String(d.svgs[0]?.source)
+    stills.alone = source
+    expect(source.startsWith('<svg')).toBe(true)
+    expect(source.length <= CAP).toBe(true)
+    expect(source.includes('@keyframes')).toBe(false)
+    expect(source.includes('<animate')).toBe(false)
+    expect(source.includes('animation')).toBe(false)
+  }
+})
+
+test('the Svg is the same string under the shader and alone (the two tests above)', () => {
+  expect(typeof stills.shader).toBe('string')
+  expect(typeof stills.alone).toBe('string')
+  expect(stills.alone === stills.shader).toBe(true)
+})
+
+// ------------------------------------------------ choosing it
 
 for (const word of ['blackhole', 'black-hole', 'hole']) {
   test(`/wallpaper ${word} chooses the black hole: it writes the option wallpaper = blackhole`, async ($, on) => {
@@ -133,37 +243,26 @@ test('a saved black hole is the look at the start, with its own colors', HOLE, a
   expect(looks.at(-1)?.colors?.label).not.toBe('Kiki night')
 })
 
-test('the Backdrop for the black hole is one Svg of its own picture, on the desktop and the phone', HOLE, async ($, on) => {
-  await begin($, on)
-  for (const surface of ['desktop', 'mobile'] as const) {
-    const drawn = await drawnBy($, 'blackhole', surface)
-    expect([surface, drawn.length]).toEqual([surface, 1])
-    const leaf = drawn[0] ?? {}
-    const source = String(leaf.source)
-    expect(leaf.isInteractive === true).toBe(false)
-    expect(source.startsWith('<svg')).toBe(true)
-    expect(source.length < 131072).toBe(true)
-    expect(source.length + String(leaf.alt).length < 200_000).toBe(true)
-    expect(String(leaf.alt).length > 0).toBe(true)
-    // The black hole's, not Kiki's: ASCII text frames, moving by default, in their own viewBox.
-    expect(source.includes('<text')).toBe(true)
-    expect(source.includes('@keyframes')).toBe(true)
-    expect(source.includes('viewBox="0 0 320 180"')).toBe(false)
-    expect(source.includes('<image')).toBe(false)
-  }
-})
-
 test('/wallpaper kiki brings Kiki back: it writes the option wallpaper = kiki', HOLE, async ($, on) => {
   const { written } = await begin($, on)
   await $.command.run(wallpaper('kiki'))
   expect(written).toEqual([{ field: 'wallpaper', value: 'kiki' }])
 })
 
-test('Kiki is the wallpaper by default, in her own colors and her own picture', async ($, on) => {
+test('Kiki is the wallpaper by default: her colors and her own picture, with no Shader', async ($, on) => {
   const { looks } = await begin($, on)
   expect(looks.at(-1)?.backdrop?.scene).toBe('kiki')
   expect(looks.at(-1)?.colors?.label).toBe('Kiki night')
-  expect((await sourceOf($, 'kiki')).includes('viewBox="0 0 320 180"')).toBe(true)
+  const ui = await $.ui.mount({ ...BACKDROP, surface: 'desktop', props: propsOf('kiki') })
+  const tree = await ui.drawn()
+  await ui.unmount()
+  let shaders = 0
+  let kiki = false
+  walk(tree, el => {
+    if (el.type === 'Shader') shaders += 1
+    if (el.type === 'Svg' && String(el.props?.source).includes('viewBox="0 0 320 180"')) kiki = true
+  })
+  expect([shaders, kiki]).toEqual([0, true])
 })
 
 test('after /wallpaper kiki the look is Kiki\'s, and the black hole is there to go back to (after a command)', HOLE, async ($, on) => {
@@ -173,22 +272,104 @@ test('after /wallpaper kiki the look is Kiki\'s, and the black hole is there to 
   expect(String(kiki.text)).toMatch(/The wallpaper is Kiki\./)
   expect(looks.at(-1)?.backdrop?.scene).toBe('kiki')
   expect(looks.at(-1)?.colors?.label).toBe('Kiki night')
-  expect((await sourceOf($, 'kiki')).includes('viewBox="0 0 320 180"')).toBe(true)
   await $.command.run(wallpaper('blackhole'))
   expect(looks.at(-1)?.backdrop?.scene).toBe('blackhole')
+  expect((await drawnBy($)).shaders.length).toBe(1)
 })
 
-test('the help names blackhole, and still names none of the old themes; a wrong word names itself and points to the help', async ($, on) => {
+test('the help names blackhole, its size and its calm, and still names none of the old themes; a wrong word names itself and points to the help', async ($, on) => {
   await begin($, on)
   const help = String((await $.command.run(wallpaper('help'))).text)
-  expect(help.includes('blackhole')).toBe(true)
+  for (const word of ['blackhole', 'size', 'calm']) expect([word, help.includes(word)]).toEqual([word, true])
   expect(/valley|weather/i.test(help)).toBe(false)
   const wrong = String((await $.command.run(wallpaper('moonbase'))).text)
   expect(wrong).toMatch(/moonbase/)
   expect(wrong).toMatch(/\/wallpaper help/)
 })
 
-test('the settings pane has a Black hole button beside Kiki\'s, and pressing each writes the option wallpaper alone', async ($, on) => {
+// ------------------------------------------------ its own options
+
+for (const [text, field, value] of [
+  ['size small', 'blackholeSize', 'small'],
+  ['size medium', 'blackholeSize', 'medium'],
+  ['size large', 'blackholeSize', 'large'],
+  ['calm on', 'blackholeCalm', true],
+  ['calm off', 'blackholeCalm', false],
+] as const) {
+  test(`/wallpaper ${text} writes the option ${field} while the black hole is on`, HOLE, async ($, on) => {
+    const { written } = await begin($, on)
+    const said = await $.command.run(wallpaper(text))
+    expect(written).toEqual([{ field, value }])
+    expect(String(said.text)).toMatch(/The wallpaper is Black hole\./)
+  })
+}
+
+test('/wallpaper size and /wallpaper calm with a value they do not take are errors that write nothing', HOLE, async ($, on) => {
+  const { written } = await begin($, on)
+  for (const text of ['size huge', 'size', 'calm maybe', 'calm']) {
+    const said = String((await $.command.run(wallpaper(text))).text)
+    expect([text, /size|calm/.test(said)]).toEqual([text, true])
+  }
+  expect(written).toEqual([])
+})
+
+test('while Kiki is on, the black hole\'s options are errors that say whose they are', async ($, on) => {
+  const { written } = await begin($, on)
+  expect((await $.command.run(wallpaper('size large'))).text).toBe('Size belongs to Black hole. The wallpaper is Kiki.')
+  expect((await $.command.run(wallpaper('calm on'))).text).toBe('Calmer motion belongs to Black hole. The wallpaper is Kiki.')
+  expect(written).toEqual([])
+})
+
+test('while the black hole is on, Kiki\'s options are errors that say whose they are', HOLE, async ($, on) => {
+  const { written } = await begin($, on)
+  expect((await $.command.run(wallpaper('time night'))).text).toBe('Time of day belongs to Kiki. The wallpaper is Black hole.')
+  expect((await $.command.run(wallpaper('spinner off'))).text).toBe('Cat spinner belongs to Kiki. The wallpaper is Black hole.')
+  expect(written).toEqual([])
+})
+
+test('after /wallpaper size large and /wallpaper calm on the Shader is handed size 1.25 and calm 1 (after a command)', HOLE, async ($, on) => {
+  await begin($, on)
+  await $.command.run(wallpaper('size large'))
+  expect(valuesOf(await drawnBy($)).size).toBe(1.25)
+  await $.command.run(wallpaper('calm on'))
+  const values = valuesOf(await drawnBy($))
+  expect([values.size, values.calm]).toEqual([1.25, 1])
+})
+
+// ------------------------------------------------ the pane
+
+test('the pane with the black hole on shows its size and calm rows, and no row of Kiki\'s', HOLE, async ($, on) => {
+  await begin($, on)
+  for (const surface of ['desktop', 'terminal'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    for (const key of ['wallpaper:kiki', 'wallpaper:blackhole', 'blackholeSize:small', 'blackholeSize:medium', 'blackholeSize:large', 'blackholeCalm:true']) {
+      expect([surface, key, (await ui.find({ key })) !== undefined]).toEqual([surface, key, true])
+    }
+    for (const key of ['kikiTime:auto', 'kikiTime:day', 'kikiTime:sunset', 'kikiTime:night', 'kikiSpinner:false']) {
+      expect([surface, key, await ui.find({ key })]).toEqual([surface, key, undefined])
+    }
+    await ui.unmount()
+  }
+})
+
+test('the pane\'s calm button writes the opposite of today\'s value', { options: { wallpaper: 'blackhole', blackholeCalm: true } }, async ($, on) => {
+  await begin($, on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ key: 'blackholeCalm:false' })).toBeDefined()
+  expect(await ui.find({ key: 'blackholeCalm:true' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('with Show FPS on the black hole\'s pane has no "cannot be measured" note', { options: { wallpaper: 'blackhole', fps: true } }, async ($, on) => {
+  await begin($, on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /cannot be measured/i })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /frame rate/i })).toBeUndefined()
+  expect(await ui.find({ key: 'fps:false' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('the pane has a Black hole button beside Kiki\'s, and pressing each writes the option wallpaper alone', async ($, on) => {
   const { written } = await begin($, on)
   for (const surface of ['desktop', 'terminal'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
@@ -204,29 +385,21 @@ test('the settings pane has a Black hole button beside Kiki\'s, and pressing eac
   expect(written).toEqual([{ field: 'wallpaper', value: 'blackhole' }, { field: 'wallpaper', value: 'kiki' }])
 })
 
-test('the option motion smooth plays the black hole', { options: { wallpaper: 'blackhole', motion: 'smooth' } }, async ($, on) => {
-  await begin($, on)
-  const moving = await sourceOf($)
-  expect(moving.includes('@keyframes')).toBe(true)
-  expect(loopSeconds(moving) > 0).toBe(true)
-})
+for (const [key, field, value] of [
+  ['blackholeSize:small', 'blackholeSize', 'small'],
+  ['blackholeSize:large', 'blackholeSize', 'large'],
+  ['blackholeCalm:true', 'blackholeCalm', true],
+] as const) {
+  test(`pressing ${key} in the pane writes the option ${field} = ${String(value)} and nothing else`, HOLE, async ($, on) => {
+    const { written } = await begin($, on)
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    await ui.press({ key })
+    await ui.unmount()
+    expect(written).toEqual([{ field, value }])
+  })
+}
 
-test('the option motion light plays the black hole, calmer', { options: { wallpaper: 'blackhole', motion: 'light' } }, async ($, on) => {
-  await begin($, on)
-  const calm = await sourceOf($)
-  expect(calm.includes('@keyframes')).toBe(true)
-  expect(loopSeconds(calm) > 0).toBe(true)
-})
-
-test('the option motion off gives the still black hole', { options: { wallpaper: 'blackhole', motion: 'off' } }, async ($, on) => {
-  await begin($, on)
-  const still = await sourceOf($)
-  expect(still.startsWith('<svg')).toBe(true)
-  expect(still.includes('<text')).toBe(true)
-  expect(still.includes('@keyframes')).toBe(false)
-  expect(still.includes('animation')).toBe(false)
-  expect(still.includes('<animate')).toBe(false)
-})
+// ------------------------------------------------ colors and the others' backdrops
 
 test('the black hole\'s colors are a dark set with an amber accent that the app will paint', HOLE, async ($, on) => {
   const { looks } = await begin($, on)
@@ -262,10 +435,11 @@ test('a backdrop of another mod with the same name is left to it, while ours is 
   })
   await begin($, on)
   // Ours first: the black hole is drawn for this mod's own backdrop.
-  expect((await drawnBy($, 'blackhole')).length).toBe(1)
+  expect((await drawnBy($)).shaders.length).toBe(1)
   // Theirs: nothing of ours is drawn, the other mod's own render is shown.
   const ui = await $.ui.mount({ ...BACKDROP, surface: 'desktop', props: propsOf('blackhole', 'other') })
   expect((await ui.find({ type: 'Text', text: /theirs/ }))?.text).toBe('theirs')
-  expect((await svgs(ui)).length).toBe(0)
+  expect(await ui.find({ type: 'Shader' })).toBeUndefined()
+  expect(await ui.find({ type: 'Svg' })).toBeUndefined()
   await ui.unmount()
 })

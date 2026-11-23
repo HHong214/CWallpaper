@@ -18,11 +18,16 @@
 //   WALLPAPERS: readonly Wallpaper[]                [kiki, blackhole], Kiki first (the default)
 //   findWallpaper(name: string): Wallpaper | undefined      by id or alias, whatever the letter case
 //   kiki: Wallpaper                                 from hooks/wallpapers/kiki/index.ts
-//   blackhole: Wallpaper                            from hooks/wallpapers/blackhole/index.ts; its `svg` is the builder
-//                                                   `blackhole({ motion, dim })` of hooks/wallpapers/blackhole/svg.ts
+//   blackhole: Wallpaper                            from hooks/wallpapers/blackhole/index.ts: kind 'shader', own options
+//                                                   `size` (choice small, medium, large; default medium) and `calm`
+//                                                   (boolean; default false); `svg` is the still picture (no
+//                                                   animation, whatever the motion); `values(settings)` gives exactly
+//                                                   dim (dim / 100), speed (1 smooth, 0.5 light), fps (1 or 0),
+//                                                   calm (1 or 0) and size (0.8, 1, 1.25); `scene` is a function (what
+//                                                   it draws is blackhole-backdrop.test.tsx's)
 //
 // Settings are built by hand below (the shape of core-options.test.ts), so this file needs the registry, the
-// two wallpapers and the black hole's builder; until they exist it fails to load as a whole. What is NOT pinned
+// two wallpapers; until they exist it fails to load as a whole. What is NOT pinned
 // here: where the dimming veil of a Kiki picture is laid (the scene's test pins what the Backdrop shows), and
 // `scene`.
 import { expect, test } from 'claude-code/testing'
@@ -30,7 +35,6 @@ import { expect, test } from 'claude-code/testing'
 import { WALLPAPERS, findWallpaper } from '../hooks/core/registry'
 import { kiki } from '../hooks/wallpapers/kiki/index'
 import { blackhole } from '../hooks/wallpapers/blackhole/index'
-import { blackhole as blackholeSvg } from '../hooks/wallpapers/blackhole/svg'
 
 const CAP = 124_000
 type Over = Record<string, unknown>
@@ -47,7 +51,7 @@ const settings = (over: Over = {}, own: Over = {}) =>
     colors: true,
     fps: false,
     ...over,
-    own: { kiki: { time: 'night', spinner: true, ...(own.kiki as Over | undefined) }, blackhole: {} },
+    own: { kiki: { time: 'night', spinner: true, ...(own.kiki as Over | undefined) }, blackhole: { size: 'medium', calm: false, ...(own.blackhole as Over | undefined) } },
   }) as never
 
 const local = (h: number, m = 0): number => new Date(2026, 5, 15, h, m, 0).getTime()
@@ -58,8 +62,9 @@ test('WALLPAPERS lists Kiki first and the black hole second, as 1.9.0 names them
   expect(WALLPAPERS.map(w => w.label)).toEqual(['Kiki', 'Black hole'])
   expect(WALLPAPERS[0]).toBe(kiki)
   expect(WALLPAPERS[1]).toBe(blackhole)
+  expect(kiki.kind).toBe('svg')
+  expect(blackhole.kind).toBe('shader')
   for (const w of WALLPAPERS) {
-    expect(w.kind).toBe('svg')
     expect(Array.isArray(w.aliases)).toBe(true)
     expect(Array.isArray(w.options)).toBe(true)
     expect(typeof w.colors).toBe('function')
@@ -68,7 +73,7 @@ test('WALLPAPERS lists Kiki first and the black hole second, as 1.9.0 names them
   }
 })
 
-test('Kiki\'s own options are time and spinner, with their kinds, choices and defaults; the black hole has none yet', () => {
+test('Kiki\'s own options are time and spinner, with their kinds, choices and defaults; the black hole\'s are size and calm', () => {
   expect(kiki.options.map(o => o.key)).toEqual(['time', 'spinner'])
   expect(kiki.options[0]).toMatchObject({ type: 'choice', default: 'auto', choices: ['auto', 'day', 'sunset', 'night'] })
   expect(kiki.options[1]).toMatchObject({ type: 'boolean', default: true })
@@ -77,7 +82,14 @@ test('Kiki\'s own options are time and spinner, with their kinds, choices and de
     expect(typeof o.description).toBe('string')
     expect(o.description.length > 0).toBe(true)
   }
-  expect(blackhole.options).toEqual([])
+  expect(blackhole.options.map(o => o.key)).toEqual(['size', 'calm'])
+  expect(blackhole.options[0]).toMatchObject({ type: 'choice', default: 'medium', choices: ['small', 'medium', 'large'] })
+  expect(blackhole.options[1]).toMatchObject({ type: 'boolean', default: false })
+  for (const o of blackhole.options) {
+    expect(typeof o.title).toBe('string')
+    expect(typeof o.description).toBe('string')
+    expect(o.description.length > 0).toBe(true)
+  }
 })
 
 test('the aliases include 1.9.0\'s words, and no word is two wallpapers\' or a command\'s', () => {
@@ -130,14 +142,15 @@ test('svg gives one SVG of at most 124,000 characters, for every motion, and the
   }
 })
 
-test('with motion off the SVG holds no animation, and with smooth or light it does', () => {
+test('with motion off the SVG holds no animation; an svg wallpaper moves with smooth or light, a shader\'s still never does', () => {
   for (const w of WALLPAPERS) {
     const off = w.svg(settings({ wallpaper: w.id, motion: 'off' }), NOON)
     expect([w.id, off.includes('@keyframes')]).toEqual([w.id, false])
     expect([w.id, off.includes('<animate')]).toEqual([w.id, false])
     expect([w.id, off.includes('animation')]).toEqual([w.id, false])
     for (const motion of ['smooth', 'light']) {
-      expect([w.id, motion, w.svg(settings({ wallpaper: w.id, motion }), NOON).includes('@keyframes')]).toEqual([w.id, motion, true])
+      const moving = w.svg(settings({ wallpaper: w.id, motion }), NOON).includes('@keyframes')
+      expect([w.id, motion, moving]).toEqual([w.id, motion, w.kind === 'svg'])
     }
   }
 })
@@ -173,13 +186,35 @@ test('Kiki at night with motion light rests the shooting star and keeps the rest
   expect(light.length < smooth.length).toBe(true)
 })
 
-test('the black hole\'s svg is the builder\'s picture for the motion and the dimming in the settings', () => {
-  for (const motion of ['smooth', 'light', 'off'] as const) {
-    for (const dim of [0, 30, 80]) {
-      const got = blackhole.svg(settings({ wallpaper: 'blackhole', motion, dim }), NOON)
-      expect([motion, dim, got === blackholeSvg({ motion, dim })]).toEqual([motion, dim, true])
-    }
+test('the black hole\'s svg is one still picture: the same for every motion, whatever the clock', () => {
+  const still = blackhole.svg(settings({ wallpaper: 'blackhole', motion: 'off' }), NOON)
+  for (const motion of ['smooth', 'light', 'off']) {
+    expect([motion, blackhole.svg(settings({ wallpaper: 'blackhole', motion }), NOON) === still]).toEqual([motion, true])
   }
-  // The clock does not matter to it.
   expect(blackhole.svg(settings({ wallpaper: 'blackhole' }), local(3))).toBe(blackhole.svg(settings({ wallpaper: 'blackhole' }), local(15)))
+  expect(still.length <= CAP).toBe(true)
+})
+
+test('the black hole\'s values are exactly dim, speed, fps, calm and size, following the settings', () => {
+  const values = (over: Over = {}, own: Over = {}) => blackhole.values?.(settings({ wallpaper: 'blackhole', ...over }, own)) as Record<string, number>
+  expect(typeof blackhole.values).toBe('function')
+  expect(values()).toEqual({ dim: 0.3, speed: 1, fps: 0, calm: 0, size: 1 })
+  expect(Object.keys(values()).sort()).toEqual(['calm', 'dim', 'fps', 'size', 'speed'])
+  expect(values({ dim: 0 }).dim).toBe(0)
+  expect(values({ dim: 80 }).dim).toBe(0.8)
+  expect(values({ dim: 55 }).dim).toBe(0.55)
+  expect(values({ motion: 'light' }).speed).toBe(0.5)
+  expect(values({ motion: 'smooth' }).speed).toBe(1)
+  expect(values({ fps: true }).fps).toBe(1)
+  expect(values({ fps: false }).fps).toBe(0)
+  expect(values({}, { blackhole: { calm: true } }).calm).toBe(1)
+  expect(values({}, { blackhole: { calm: false } }).calm).toBe(0)
+  for (const [size, number] of [['small', 0.8], ['medium', 1], ['large', 1.25]] as const) {
+    expect([size, values({}, { blackhole: { size } }).size]).toEqual([size, number])
+  }
+})
+
+test('the black hole has a scene function, and Kiki has none', () => {
+  expect(typeof blackhole.scene).toBe('function')
+  expect(kiki.scene).toBeUndefined()
 })

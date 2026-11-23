@@ -49,8 +49,10 @@ const SHADER = {
 const FLAT = { id: 'flat', label: 'Flat', aliases: [], kind: 'svg', options: [], colors, svg: still, moves } as never
 const ALL = [...WALLPAPERS, SHADER, FLAT] as never
 
-const settings = (over: Over = {}, kiki: Over = {}) =>
-  ({
+/** `over.hole`, when given, holds the black hole's own settings (size, calm). */
+const settings = (over: Over = {}, kiki: Over = {}) => {
+  const { hole, ...top } = over as Over & { hole?: Over }
+  return {
     on: true,
     wallpaper: 'kiki',
     motion: 'smooth',
@@ -59,9 +61,10 @@ const settings = (over: Over = {}, kiki: Over = {}) =>
     dim: 30,
     colors: true,
     fps: false,
-    ...over,
-    own: { kiki: { time: 'night', spinner: true, ...kiki }, blackhole: {}, stand: {}, flat: {} },
-  }) as never
+    ...top,
+    own: { kiki: { time: 'night', spinner: true, ...kiki }, blackhole: { size: 'medium', calm: false, ...hole }, stand: {}, flat: {} },
+  } as never
+}
 
 const local = (h: number, m = 0): number => new Date(2026, 5, 15, h, m, 0).getTime()
 const NOON = local(12)
@@ -76,7 +79,7 @@ test('off is no scene at all, for every wallpaper', () => {
 })
 
 test('an svg wallpaper is an svg scene: its picture and a label, nothing else', () => {
-  for (const wallpaper of ['kiki', 'blackhole', 'flat']) {
+  for (const wallpaper of ['kiki', 'flat']) {
     const s = scene({ wallpaper })
     expect([wallpaper, s.kind]).toEqual([wallpaper, 'svg'])
     expect([wallpaper, Object.keys(s).sort()]).toEqual([wallpaper, ['alt', 'kind', 'source']])
@@ -119,12 +122,30 @@ test('Kiki\'s picture is dimmed by the settings\' dim, the veil painted last ins
   expect(still.endsWith('<rect width="100%" height="100%" fill="#000" opacity="0.3"/></svg>')).toBe(true)
 })
 
-test('the black hole\'s scene darkens itself by the settings\' dim, and is still with motion off', () => {
-  const dark = scene({ wallpaper: 'blackhole', dim: 80 }).source
-  const clear = scene({ wallpaper: 'blackhole', dim: 0 }).source
-  expect(dark === clear).toBe(false)
-  expect((scene({ wallpaper: 'blackhole', motion: 'off' }).source ?? '').includes('@keyframes')).toBe(false)
-  expect((scene({ wallpaper: 'blackhole', motion: 'smooth' }).source ?? '').includes('@keyframes')).toBe(true)
+test('the black hole is a shader scene with motion on: its five values, and a still picture without animation', () => {
+  const smooth = scene({ wallpaper: 'blackhole' })
+  expect(smooth.kind).toBe('shader')
+  expect(Object.keys(smooth).sort()).toEqual(['alt', 'id', 'kind', 'source', 'values'])
+  expect(smooth.id).toBe('blackhole')
+  expect(smooth.values).toEqual({ dim: 0.3, speed: 1, fps: 0, calm: 0, size: 1 })
+  expect((smooth.source ?? '').startsWith('<svg')).toBe(true)
+  expect((smooth.source ?? '').length <= 124_000).toBe(true)
+  expect((smooth.source ?? '').includes('@keyframes')).toBe(false)
+  expect((smooth.alt ?? '').length > 0).toBe(true)
+  const light = scene({ wallpaper: 'blackhole', motion: 'light', fps: true, dim: 80, hole: { size: 'large', calm: true } })
+  expect(light.kind).toBe('shader')
+  expect(light.values).toEqual({ dim: 0.8, speed: 0.5, fps: 1, calm: 1, size: 1.25 })
+  // The same still picture under the shader and alone.
+  expect(scene({ wallpaper: 'blackhole', motion: 'off' }).source).toBe(smooth.source)
+})
+
+test('the black hole with motion off is an svg scene of the same still picture', () => {
+  const off = scene({ wallpaper: 'blackhole', motion: 'off', hole: { size: 'small' } })
+  expect(off.kind).toBe('svg')
+  expect(Object.keys(off).sort()).toEqual(['alt', 'kind', 'source'])
+  expect((off.source ?? '').includes('@keyframes')).toBe(false)
+  expect((off.source ?? '').includes('animation')).toBe(false)
+  expect((off.alt ?? '').length > 0).toBe(true)
 })
 
 test('a shader wallpaper with motion off is an svg scene of its still picture', () => {

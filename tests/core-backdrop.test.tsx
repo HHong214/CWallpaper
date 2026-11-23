@@ -145,9 +145,10 @@ test('the option `wallpaper` decides which wallpaper the look and the Backdrop a
   expect(seen.looks.at(-1)?.colors?.label).not.toBe('Kiki night')
   const drawn = await drawnBy($, 'blackhole')
   expect(drawn.length).toBe(1)
-  // The black hole's: ASCII text frames in their own viewBox, not Kiki's pixel art.
+  // The black hole's still picture under its shader, not Kiki's pixel art (the Shader itself is
+  // blackhole-backdrop.test.tsx's).
   const source = String(drawn[0]?.source)
-  expect(source.includes('<text')).toBe(true)
+  expect(source.startsWith('<svg')).toBe(true)
   expect(source.includes('viewBox="0 0 320 180"')).toBe(false)
   expect(String(drawn[0]?.alt).length > 0).toBe(true)
 })
@@ -181,7 +182,7 @@ test('the option `motion` off gives a still Kiki, light and smooth a moving one'
 test('the option `motion` off gives the still black hole', { options: { wallpaper: 'blackhole', motion: 'off' } }, async ($, on) => {
   await begin($, on)
   const still = await sourceOf($, 'blackhole')
-  expect(still.includes('<text')).toBe(true)
+  expect(still.startsWith('<svg')).toBe(true)
   expect(still.includes('@keyframes')).toBe(false)
   expect(still.includes('animation')).toBe(false)
 })
@@ -363,7 +364,7 @@ test('the look follows a command at once: the wallpaper, the motion, the dials, 
   expect(seen.looks.at(-1)?.backdrop?.glass?.opacity).toBe(0.6)
   await $.command.run(wallpaper('blackhole'))
   expect(seen.looks.at(-1)?.backdrop?.scene).toBe('blackhole')
-  expect((await sourceOf($, 'blackhole')).includes('<text')).toBe(true)
+  expect((await sourceOf($, 'blackhole')).startsWith('<svg')).toBe(true)
   await $.command.run(wallpaper('off'))
   expect(seen.cleared).toBe(1)
   const before = seen.looks.length
@@ -477,10 +478,11 @@ test('with Show FPS on, an svg wallpaper\'s pane says its frame rate cannot be m
   }
 })
 
-test('with Show FPS on and the black hole on, the same note shows', { options: { fps: true, wallpaper: 'blackhole' } }, async ($, on) => {
+test('with Show FPS on and the black hole on, there is no note: a shader draws its own frame rate', { options: { fps: true, wallpaper: 'blackhole' } }, async ($, on) => {
   await begin($, on)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await shows(ui, /frame rate/i)).toBe(true)
+  expect(await shows(ui, /cannot be measured/i)).toBe(false)
+  expect(await shows(ui, /frame rate/i)).toBe(false)
   await ui.unmount()
 })
 

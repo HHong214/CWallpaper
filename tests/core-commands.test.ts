@@ -40,7 +40,7 @@ const settings = (over: Over = {}, kiki: Over = {}) =>
     colors: true,
     fps: false,
     ...over,
-    own: { kiki: { time: 'auto', spinner: true, ...kiki }, blackhole: {}, stand: { mood: 'calm' } },
+    own: { kiki: { time: 'auto', spinner: true, ...kiki }, blackhole: { size: 'medium', calm: false }, stand: { mood: 'calm' } },
   }) as never
 
 const noop = () => undefined
@@ -196,6 +196,30 @@ test('an option of another wallpaper says whose it is and which wallpaper is on'
   expect(String(run('time', { wallpaper: 'blackhole' }).message)).toMatch(/belongs to Kiki/)
 })
 
+test('the black hole\'s own options, size and calm, are set by their short keys while it is on', () => {
+  const hole = { wallpaper: 'blackhole' }
+  for (const size of ['small', 'medium', 'large']) {
+    expect([size, run(`size ${size}`, hole)]).toEqual([size, { kind: 'set', key: 'blackholeSize', value: size }])
+  }
+  expect(run('Size LARGE', hole)).toEqual({ kind: 'set', key: 'blackholeSize', value: 'large' })
+  expect(run('calm on', hole)).toEqual({ kind: 'set', key: 'blackholeCalm', value: true })
+  expect(run('calm off', hole)).toEqual({ kind: 'set', key: 'blackholeCalm', value: false })
+  expect(run('calm on', { wallpaper: 'blackhole', on: false })).toEqual({ kind: 'set', key: 'blackholeCalm', value: true })
+  for (const bad of ['size', 'size huge', 'size small large', 'calm', 'calm maybe', 'calm 1']) {
+    const a = run(bad, hole)
+    expect([bad, a.kind]).toEqual([bad, 'error'])
+    expect([bad, String(a.message)]).toEqual([bad, expect.stringMatching(/size|calm/)])
+  }
+  // Kiki's options are not the black hole's.
+  expect(run('time night', hole).kind).toBe('error')
+})
+
+test('the black hole\'s options while Kiki is on say whose they are and which wallpaper is on', () => {
+  expect(run('size large')).toEqual({ kind: 'error', message: 'Size belongs to Black hole. The wallpaper is Kiki.' })
+  expect(run('calm on')).toEqual({ kind: 'error', message: 'Calmer motion belongs to Black hole. The wallpaper is Kiki.' })
+  expect(run('size', { wallpaper: 'unknown' }).message).toBe('Size belongs to Black hole. The wallpaper is Kiki.')
+})
+
 // ------------------------------------------------------- what was removed, and what is unknown
 
 test('picture and video say they were removed and that wallpapers are now made in the repository', () => {
@@ -285,7 +309,7 @@ test('the help lists every command and the wallpapers by name', () => {
   const help = helpText(WALLPAPERS as never)
   expect(typeof help).toBe('string')
   expect(help).toMatch(/\/wallpaper/)
-  for (const word of ['settings', 'help', 'kiki', 'blackhole', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'time', 'spinner']) {
+  for (const word of ['settings', 'help', 'kiki', 'blackhole', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'time', 'spinner', 'size', 'calm']) {
     expect([word, help.includes(word)]).toEqual([word, true])
   }
   expect(/\bon\b/.test(help) && /\boff\b/.test(help)).toBe(true)
