@@ -4,14 +4,14 @@ This file is the single source of instructions for this repo. It takes an agent 
 
 ## The project
 
-CWallpaper (the C is `#D97757`, like the owner's other project CNotes) is a mod for the Claude desktop app. It gives the app a moving wallpaper behind the conversation and repaints the app in matching colours. Plugin `wallpaper`, marketplace `cwallpaper`, command `/wallpaper`.
+CWallpaper (the C is `#D97757`, like the owner's other project CNotes) is a mod for the Claude desktop app. It gives the app a moving wallpaper behind the conversation and repaints the app in matching colours. Plugin `CWallpaper`, marketplace `cwallpaper`, command `/cwallpaper`.
 
-- Where it lives: `C:\Users\HHong\Documents\GitHub\CWallpaper`, private, https://github.com/HHong214/CWallpaper, branch `main`.
-- How it reaches the app: the owner installs it from the GitHub repository as `wallpaper@cwallpaper`. A push reaches the app through `/plugin marketplace update cwallpaper` and then `/reload-plugins`, or by itself once the owner has switched auto-update on for that marketplace.
-- **The manifest has no `version`, on purpose.** Every pushed commit is an update. Never add a `version` to `.claude-plugin/plugin.json` or `marketplace.json`. `claude plugin validate .` warns that no version is given; that warning is expected.
+- Where it lives: `Documents\GitHub\CWallpaper` on the owner's machine, public, https://github.com/HHong214/CWallpaper, branch `main`.
+- How it reaches the app: the owner installs it from the GitHub repository as `CWallpaper@cwallpaper`. A push reaches the app through `/plugin marketplace update cwallpaper` and then `/reload-plugins`, or by itself once the owner has switched auto-update on for that marketplace.
+- **The manifest has no `version`, on purpose.** Every pushed commit is an update. Never add a `version` to `.claude-plugin/plugin.json` or `marketplace.json`. `claude plugin validate .` warns that no version is given, and that the name `CWallpaper` is not kebab-case (it accepts it). Both warnings are expected.
 - Two wallpapers exist: `kiki` (kind `svg`, pixel art the app animates itself) and `blackhole` (kind `shader`, an ASCII black hole on the GPU over a still SVG).
-- Wallpapers are made here, as code, by an agent. A picture or a video of the owner's own is not loaded by the mod any more, and `/wallpaper picture` says so.
-- Settings are plugin options and nothing else. There is no store of the mod's own.
+- Wallpapers are made here, as code, by an agent. A picture or a video of the owner's own is not loaded by the mod any more, and `/cwallpaper picture` says so.
+- Settings are plugin options and nothing else, written as `CWallpaper.<key>` (the option whose own key is `wallpaper` is `CWallpaper.wallpaper`). The mod's session values live under `{ plugin: 'CWallpaper', key }`; the settings pane's id is `cwallpaper-settings`; the author on the plugin page is `HHong214`. There is one command, `/cwallpaper`.
 
 What this file is for: from now on an agent makes each wallpaper in this repository, by following it. It also records the lessons that keep a wallpaper light, such as hiding what is not showing.
 
@@ -19,19 +19,19 @@ What this file is for: from now on an agent makes each wallpaper in this reposit
 
 ```
 .claude-plugin/plugin.json        the manifest: name, description, types, userConfig (the options; written by tools/sync-manifest.mjs)
-.claude-plugin/marketplace.json   marketplace `cwallpaper`, one plugin `wallpaper`, source ./
+.claude-plugin/marketplace.json   marketplace `cwallpaper`, one plugin `CWallpaper`, source ./
 hooks/hooks.json                  names the one hooks module: ./register.tsx
-hooks/register.tsx                thin wiring: reads options, sets the theme, answers the Backdrop, runs /wallpaper, draws the pane, adds the cat to the spinner
+hooks/register.tsx                thin wiring: reads options, sets the theme, answers the Backdrop, runs /cwallpaper, draws the pane, adds the cat to the spinner
 hooks/core/options.ts             pure: the option model (COMMON, optionSpecs, readSettings, manifestKey)
 hooks/core/registry.ts            pure: the Wallpaper type and WALLPAPERS, the one list to add a wallpaper to
-hooks/core/commands.ts            pure: `/wallpaper ...` text to an action, status and help text
+hooks/core/commands.ts            pure: `/cwallpaper ...` text to an action, status and help text
 hooks/core/pane.ts                pure: the rows of the settings pane
 hooks/core/scene.ts               pure: what the Backdrop shows (none, svg or shader) and the shader's values
 hooks/make-colors.js, .d.ts       the design system's own colour helper (copied, not edited)
 hooks/wallpapers/<id>/index.ts    one folder a wallpaper; index.ts exports its Wallpaper
 hooks/wallpapers/kiki/            Kiki: scene.ts joins hero.ts, world.ts, pixels.ts, sun.ts, types.ts
 hooks/wallpapers/blackhole/       shader.ts (the GPU shader), still.ts (the still SVG), still-data.ts (written by tools/make-still.mjs)
-types/index.d.ts                  the mod's session values ($.state): paneOpen, lookSet
+types/index.d.ts                  the mod's session values ($.state): paneOpen, lookSet, pendingWrites
 tests/                            plugin tests, run by `claude plugin test .` (*.test.ts and *.test.tsx)
 tools/                            look at a wallpaper without the app, and the checks; see tools/README.md
 tools/tests/                      Node tests, run by `node --test tools/tests/`; blackhole-kit.mjs is a helper, not a test file (`drive()` runs the shader frame by frame and changes the window, the prompt box, the values and the frame time between frames); blackhole-geometry and blackhole-stability are quick tests, blackhole-flash and blackhole-geometry-flash are the slow ones
@@ -127,7 +127,7 @@ Follow these steps in order. Do not skip the tests-first step or the looking ste
 4. **Make the folder** `hooks/wallpapers/<id>/`. Its `index.ts` exports a frozen `Wallpaper` (type in `hooks/core/registry.ts`). It is pure: no engine import, no clock (the time comes in as `now`), no store, never throws, junk in gives the default out. Its fields:
    - `id`: the folder name; the value of the `wallpaper` option.
    - `label`: the name shown ("Black hole").
-   - `aliases`: other words `/wallpaper` takes, any letter case (`['black-hole', 'hole']`).
+   - `aliases`: other words `/cwallpaper` takes, any letter case (`['black-hole', 'hole']`).
    - `kind`: `'svg'` or `'shader'`.
    - `options`: its own options (below), with short keys.
    - `colors(settings)`: what `makeColors` takes: `label`, `roles` (`accent`, `danger`, `success`, `warning`, `pro`), and `light.gray.anchors` and `dark.gray.anchors` (surfaces and text colours). Red stays danger, green success, amber warning. If `makeColors` reports a line starting `Desktop won't paint`, the app ignores the colours; the mod shows that line as a toast.
@@ -192,7 +192,7 @@ Each rule has its reason. Break none of them without telling the owner.
 - [ ] **Test the changes, not only the settled picture.** Drive the inputs between frames with `drive()` from `tools/tests/blackhole-kit.mjs`: the window, the prompt box, the values, the frame time.
 - [ ] **Fine characters vanish behind blurred panels.** At a blur of 8 nothing is left of 6 by 10 point characters; a blur of about 1 keeps them. Say so to the owner. Do not change their setting.
 - [ ] **Text in an SVG keeps to a grid only if each run's `textLength` is its character count less one, times the cell, plus one character's advance** (`still.ts`: `(chars.length - 1) * cellW + ADVANCE`), so the browser's own font does not shift the columns.
-- [ ] **Settings are plugin options and nothing else.** A wallpaper's own options carry its name (`<id><Key>`, title "Label: ..."). The pane shows only the current wallpaper's. A command for another wallpaper's option is refused. Never keep a setting in `$.state`; it holds only `paneOpen` and `lookSet`.
+- [ ] **Settings are plugin options and nothing else.** A wallpaper's own options carry its name (`<id><Key>`, title "Label: ..."). The pane shows only the current wallpaper's. A command for another wallpaper's option is refused. Never keep a setting in `$.state`; it holds only `paneOpen`, `lookSet` and `pendingWrites`, under `CWallpaper`.
 - [ ] **Nobody but the owner can see the app.** Use the preview tools, say plainly what was not seen, and never claim a look was checked in the app.
 - [ ] **Draw everything yourself.** Copy no art, video or font from elsewhere. Fetch nothing from the web. The mod loads no picture or video of the owner's own.
 - [ ] **Redraws are the mod's job, not the wallpaper's.** An `svg` wallpaper that moves is redrawn by `register.tsx` a few seconds after it first shows (3 and 12 seconds, each with a fresh empty `<g id="kw...">` before the last `</svg>`), because the app can leave an image built while the backdrop was hidden standing still. The scene must stay valid with that mark in it. A picture that changes with the clock is redrawn by the minute timer when `svg(settings, now)` gives a different string.

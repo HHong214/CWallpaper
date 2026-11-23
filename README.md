@@ -2,7 +2,7 @@
 
 CWallpaper is a mod for the Claude desktop app. It gives the app a moving wallpaper behind the conversation and repaints the app in colours that match it.
 
-The repository is private. Wallpapers are drawn by code, so each one is made here, by an agent that follows [CLAUDE.md](CLAUDE.md).
+Wallpapers are drawn by code, so each one is made here, by an agent that follows [CLAUDE.md](CLAUDE.md).
 
 ## Wallpapers
 
@@ -19,7 +19,7 @@ On the command line:
 
 ```
 claude plugin marketplace add https://github.com/HHong214/CWallpaper.git
-claude plugin install wallpaper@cwallpaper
+claude plugin install CWallpaper@cwallpaper
 ```
 
 Then run `/reload-plugins` in the app.
@@ -30,22 +30,22 @@ The plugin has no version number, so every pushed commit is an update. In the ap
 
 ## Use
 
-`/wallpaper` with no words shows what is drawn and draws it afresh. `/wallpaper help` lists every command. `/wallpaper settings` opens the settings in a pane. Every setting is also a plugin option, on the app's plugin options screen.
+`/cwallpaper` with no words shows what is drawn and draws it afresh. `/cwallpaper help` lists every command. `/cwallpaper settings` opens the settings in a pane. Every setting is also a plugin option, on the app's plugin options screen.
 
 | Command | Setting | Takes |
 |---|---|---|
-| `/wallpaper kiki`, `/wallpaper blackhole` | Wallpaper | the wallpaper's name |
-| `/wallpaper on`, `/wallpaper off` | Wallpaper: on | on or off |
-| `/wallpaper motion <word>` | Motion | `smooth`, `light` or `off` |
-| `/wallpaper clear <n>` | Panels: how clear | 0 to 100 |
-| `/wallpaper blur <n>` | Panels: blur | 0 to 40 |
-| `/wallpaper dim <n>` | Scene: dim | 0 to 80 |
-| `/wallpaper colors on\|off` | App colours follow the wallpaper | on or off |
-| `/wallpaper fps on\|off` | Show FPS (a GPU wallpaper only) | on or off |
-| `/wallpaper time <word>` | Kiki: time of day | `auto`, `day`, `sunset` or `night` |
-| `/wallpaper spinner on\|off` | Kiki: cat spinner | on or off |
-| `/wallpaper size <word>` | Black hole: size | `small`, `medium` or `large` |
-| `/wallpaper calm on\|off` | Black hole: calmer motion | on or off |
+| `/cwallpaper kiki`, `/cwallpaper blackhole` | Wallpaper | the wallpaper's name |
+| `/cwallpaper on`, `/cwallpaper off` | Wallpaper: on | on or off |
+| `/cwallpaper motion <word>` | Motion | `smooth`, `light` or `off` |
+| `/cwallpaper clear <n>` | Panels: how clear | 0 to 100 |
+| `/cwallpaper blur <n>` | Panels: blur | 0 to 40 |
+| `/cwallpaper dim <n>` | Scene: dim | 0 to 80 |
+| `/cwallpaper colors on\|off` | App colours follow the wallpaper | on or off |
+| `/cwallpaper fps on\|off` | Show FPS (a GPU wallpaper only) | on or off |
+| `/cwallpaper time <word>` | Kiki: time of day | `auto`, `day`, `sunset` or `night` |
+| `/cwallpaper spinner on\|off` | Kiki: cat spinner | on or off |
+| `/cwallpaper size <word>` | Black hole: size | `small`, `medium` or `large` |
+| `/cwallpaper calm on\|off` | Black hole: calmer motion | on or off |
 
 A wallpaper's own settings work only while it is the wallpaper.
 
