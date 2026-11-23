@@ -179,7 +179,7 @@ export function findBuffers(r) {
 
 /**
  * Runs the shader frame by frame.
- *   res, points, composer, values: as the Renderer takes them (values over BASE)
+ *   res, points, composer, values: as the Renderer takes them (values over BASE); shader: a shader file (default the one under hooks/)
  *   frames: how many frames to run (0 to frames - 1)
  *   draw(f): whether frame f's picture is wanted (undrawn frames are only stepped, which is cheap)
  *   tweak(f, api): called before frame f; api = { setWindow([pw, ph]), setComposer([l, b, r, t]), setValues(obj), setFps(n),
@@ -187,8 +187,8 @@ export function findBuffers(r) {
  *   onFrame(f, pic, r): called for each drawn frame with the premultiplied picture (y up) and the renderer
  * Returns the renderer's count of non-finite values.
  */
-export async function drive({ res, points = res, composer = PROMPT, values = {}, frames, draw, tweak, onFrame, fps }) {
-  const shader = await loadShader(SHADER)
+export async function drive({ res, points = res, composer = PROMPT, values = {}, frames, draw, tweak, onFrame, fps, shader: shaderFile = SHADER }) {
+  const shader = await loadShader(shaderFile)
   const r = new Renderer(shader, { res, points, composer, values: { ...BASE, ...values }, fps })
   const api = {
     setWindow: ([pw, ph]) => {
@@ -388,4 +388,145 @@ export function brightestMedian(lum, w, h, g) {
   }
   d.sort((a, b) => a - b)
   return { median: d[Math.floor(d.length / 2)], count: d.length }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// What the eye can see of the motion and the texture (blackhole-visible.test.mjs): one run of a shader file, measured.
+
+const GLYPH_BASE = 64 // flow.x = glyph shown + 64 * glyph before + 4096 * stray colour
+
+/**
+ * Runs `shaderFile` (default: the shader under hooks/) on 600 by 378 points with the standard prompt box, dim 0, speed 1,
+ * calm 0, size 1, frames 0 to 164 (frames 60 to 164 drawn), and measures:
+ *   M: the mean over frames 60 to 149 of the mean over the disc's box of |L(t + 15) - L(t)| (luminance), divided by the mean
+ *      over frames 60 to 164 of the mean over the disc's box of the luminance above the ground
+ *   glyphs (frame 90): over the cells that see the disc (geo.x > 0, not ring, not stray) and are lit (glyph above 0): { cells,
+ *      top (the commonest glyph's share), common (the number of glyphs holding 4% or more each) }
+ *   lanes (frame 90): the cells that see the disc in the middle third by radius, their brightness (flow.y) by angle in bins
+ *      of 10 degrees: { spread: (90th percentile - 10th) / mean of the bins' means }
+ *   changed: over frames 60 to 164, the share of the lit disc cells (lit at frame 90) that change their glyph at least once
+ *   mostIn1s: the most glyph changes any such cell makes in any 30 consecutive frames (29 steps)
+ *   strays: for frames 60, 90, 120 and 150, the cells of kind stray (geo.w, floor(w / 8) % 4 above 0) whose brightness drawn
+ *      (flow.y) is 0.15 or more, counted over the whole window
+ */
+export async function visibleMetrics(shaderFile = SHADER) {
+  const points = [600, 378]
+  const g = geometry(points, PROMPT)
+  const [w, h] = points
+  const x0 = Math.max(0, Math.floor(g.cx - 0.575 * g.W))
+  const x1 = Math.min(w - 1, Math.ceil(g.cx + 0.575 * g.W))
+  const y0 = Math.max(0, Math.floor(g.cy - 0.35 * g.W))
+  const y1 = Math.min(h - 1, Math.ceil(g.cy + 0.35 * g.W))
+  const boxes = {}
+  let cells = null
+  let strayCells = null
+  const glyphs = {}
+  let lanes = null
+  const strays = {}
+  const bad = await drive({
+    res: points,
+    points,
+    composer: PROMPT,
+    frames: 165,
+    draw: f => f >= 60,
+    shader: shaderFile,
+    onFrame: (f, pic, r) => {
+      const lum = r.luminance(pic)
+      const box = new Float32Array((x1 - x0 + 1) * (y1 - y0 + 1))
+      let k = 0
+      for (let j = y0; j <= y1; j++) for (let i = x0; i <= x1; i++) box[k++] = lum[(h - 1 - j) * w + i]
+      boxes[f] = box
+      const b = findBuffers(r)
+      if (!cells) {
+        // the cells that see the disc, and the stray cells, from the first drawn frame's geo (it does not change in a run)
+        const index = []
+        const radius = []
+        const angle = []
+        for (let t = 1; t < b.geo.w * b.geo.h; t++) {
+          const x = b.geo.data[t * 4]
+          if (!(x > 0)) continue
+          const code = b.geo.data[t * 4 + 3]
+          if (Math.floor(code / 4) % 2 === 1 || Math.floor(code / 8) % 4 !== 0) continue
+          index.push(t)
+          radius.push(x)
+          angle.push((((b.geo.data[t * 4 + 1] % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)))
+        }
+        cells = { index, radius, angle }
+        strayCells = []
+        for (let t = 1; t < b.geo.w * b.geo.h; t++) if (Math.floor(b.geo.data[t * 4 + 3] / 8) % 4 !== 0) strayCells.push(t)
+      }
+      glyphs[f] = Uint8Array.from(cells.index, t => b.flow.data[t * 4] % GLYPH_BASE)
+      if (f === 90) {
+        const order = Array.from(cells.index.keys()).sort((p, q) => cells.radius[p] - cells.radius[q])
+        const mid = order.slice(Math.floor(order.length / 3), Math.floor((2 * order.length) / 3))
+        const sum = new Float64Array(36)
+        const cnt = new Float64Array(36)
+        for (const i of mid) {
+          const bin = Math.min(35, Math.floor((cells.angle[i] / (2 * Math.PI)) * 36))
+          sum[bin] += b.flow.data[cells.index[i] * 4 + 1]
+          cnt[bin]++
+        }
+        const means = []
+        for (let q = 0; q < 36; q++) if (cnt[q]) means.push(sum[q] / cnt[q])
+        means.sort((p, q) => p - q)
+        const pick = p => means[Math.min(means.length - 1, Math.floor(p * (means.length - 1) + 0.5))]
+        const mean = means.reduce((s, v) => s + v, 0) / means.length
+        lanes = { spread: (pick(0.9) - pick(0.1)) / mean, bins: means.length, cells: mid.length }
+      }
+      if ([60, 90, 120, 150].includes(f)) {
+        let n = 0
+        for (const t of strayCells) if (b.flow.data[t * 4 + 1] >= 0.15) n++
+        strays[f] = n
+      }
+    },
+  })
+  // M
+  let num = 0
+  let nn = 0
+  for (let t = 60; t + 15 <= 164; t++) {
+    const a = boxes[t]
+    const c = boxes[t + 15]
+    let s = 0
+    for (let i = 0; i < a.length; i++) s += Math.abs(c[i] - a[i])
+    num += s / a.length
+    nn++
+  }
+  let den = 0
+  for (let t = 60; t <= 164; t++) {
+    let s = 0
+    for (const v of boxes[t]) s += excess(v)
+    den += s / boxes[t].length
+  }
+  const M = num / nn / (den / 105)
+  // glyph shares at frame 90 over the lit cells
+  const at90 = glyphs[90]
+  const litIdx = []
+  for (let i = 0; i < at90.length; i++) if (at90[i] > 0) litIdx.push(i)
+  const tally = new Map()
+  for (const i of litIdx) tally.set(at90[i], (tally.get(at90[i]) ?? 0) + 1)
+  const shares = [...tally.values()].sort((p, q) => q - p).map(v => v / litIdx.length)
+  // glyph changes over the lit cells
+  let changed = 0
+  let mostIn1s = 0
+  for (const i of litIdx) {
+    const flips = []
+    for (let f = 61; f <= 164; f++) flips.push(glyphs[f][i] !== glyphs[f - 1][i] ? 1 : 0)
+    if (flips.some(v => v)) changed++
+    let win = flips.slice(0, 29).reduce((s, v) => s + v, 0)
+    mostIn1s = Math.max(mostIn1s, win)
+    for (let k = 29; k < flips.length; k++) {
+      win += flips[k] - flips[k - 29]
+      mostIn1s = Math.max(mostIn1s, win)
+    }
+  }
+  return {
+    bad,
+    M,
+    discCells: cells.index.length,
+    glyphs: { cells: litIdx.length, top: shares[0] ?? 0, common: shares.filter(v => v >= 0.04).length, shares: shares.slice(0, 8) },
+    lanes,
+    changed: litIdx.length ? changed / litIdx.length : 0,
+    mostIn1s,
+    strays,
+  }
 }

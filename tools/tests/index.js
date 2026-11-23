@@ -13,6 +13,7 @@ const files = [
   './blackhole-stability.test.mjs',
   './blackhole-measure.test.mjs',
   './blackhole-look.test.mjs',
+  './blackhole-visible.test.mjs',
 ]
 if (process.env.SLOW) files.push('./blackhole-flash.test.mjs', './blackhole-geometry-flash.test.mjs', './blackhole-spin.test.mjs')
 Promise.all(files.map(f => import(f))).catch(e => {
