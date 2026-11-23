@@ -1,0 +1,163 @@
+// Tests for the manifest and the marketplace file, read from Node (the plugin test runner cannot read a JSON file:
+// see tests/manifest.test.ts, which can only probe the manifest through the engine). Run: node --test tools/tests/
+//
+// What they pin (core-contract.md, "Options"):
+//   1. .claude-plugin/plugin.json `userConfig` is exactly what `optionSpecs(WALLPAPERS)` lists
+//      (hooks/core/options.ts, hooks/core/registry.ts): the same keys in the same order; for each, the type (a choice
+//      is "type": "string" with `options` equal to its choices in order; a number is "type": "number" with `min` and
+//      `max`; a boolean is "type": "boolean"), the `title`, a non-empty `description` equal to the spec's, the
+//      `default`. No other key, so `spinner` is gone.
+//   2. plugin.json: `name` is "wallpaper"; there is NO `version` field; the description names Kiki and the black hole
+//      and says nothing of a picture or a video of your own.
+//   3. .claude-plugin/marketplace.json: `name` is "cwallpaper", its one plugin entry is "wallpaper" with
+//      "source": "./" and no `version`.
+//   4. The five modules under hooks/core/ (options, registry, commands, pane, scene) import under Node as they are.
+//
+// WHY THERE IS NO `version` IN plugin.json (decided, do not add one back by habit): with no version pinned, every
+// commit pushed to GitHub counts as an update for the people who installed the mod. With a version, nobody gets
+// anything until it is raised. This test fails if a `version` appears in plugin.json or in the marketplace entry.
+//
+// WHAT THE BUILDER MUST KEEP TO, so the modules import under Node 24 (which runs a `.ts` file with erasable types
+// as it is, with no flag):
+//   - erasable TypeScript only: types, `import type`, interfaces and `as` are fine; no enum, namespace, parameter
+//     property, `import x = require(...)` or decorator;
+//   - every relative import is written WITH its extension: `import { kiki } from '../wallpapers/kiki/index.ts'`
+//     (an extensionless './x' fails under Node with ERR_MODULE_NOT_FOUND). This holds for everything the core
+//     modules import in turn, since registry.ts pulls in the wallpapers (hooks/wallpapers/kiki and blackhole);
+//   - no import of 'claude-code/...' and no JSX in those files (register.tsx is not imported here);
+//   - a JavaScript file they import (make-colors.js) is imported with its extension too, as it is today.
+// A failing import is reported with those rules in its message.
+//
+// Why they fail now: hooks/core/options.ts does not exist (each module is imported inside its test, so the tool's own
+// tests keep passing), and plugin.json still has a `version`, the old description and the `spinner` key.
+import assert from 'node:assert/strict'
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { describe, it } from 'node:test'
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const read = file => JSON.parse(readFileSync(path.join(ROOT, file), 'utf8'))
+const CORE = ['options', 'registry', 'commands', 'pane', 'scene']
+
+const cache = new Map()
+/** Imports hooks/core/<name>.ts, or throws an error that says what the module has to keep to. */
+async function core(name) {
+  const file = path.join(ROOT, 'hooks', 'core', `${name}.ts`)
+  if (!cache.has(file)) {
+    cache.set(
+      file,
+      import(pathToFileURL(file).href).catch(e => {
+        const missing = !existsSync(file)
+        throw new Error(
+          missing
+            ? `${file} does not exist yet.`
+            : `${file} could not be imported under Node: ${e && e.message}. It and everything it imports must be erasable ` +
+                `TypeScript only (no enum, namespace, parameter property), every relative import written with its .ts or ` +
+                `.js extension (an extensionless one cannot resolve under Node), nothing from 'claude-code/...', no JSX.`,
+        )
+      }),
+    )
+  }
+  return cache.get(file)
+}
+
+/** The specs of the real wallpapers, from the modules. */
+async function specs() {
+  const { optionSpecs } = await core('options')
+  const { WALLPAPERS } = await core('registry')
+  assert.equal(typeof optionSpecs, 'function', 'hooks/core/options.ts must export optionSpecs')
+  assert.ok(Array.isArray(WALLPAPERS), 'hooks/core/registry.ts must export the array WALLPAPERS')
+  return optionSpecs(WALLPAPERS)
+}
+
+describe('plugin.json userConfig is what optionSpecs(WALLPAPERS) lists', () => {
+  it('declares the same keys in the same order, and no other (the old spinner is gone)', async () => {
+    const list = await specs()
+    const config = read('.claude-plugin/plugin.json').userConfig
+    assert.ok(config && typeof config === 'object', 'plugin.json has a userConfig')
+    assert.deepEqual(Object.keys(config), list.map(s => s.key))
+    assert.ok(!('spinner' in config), 'the old `spinner` key is gone')
+  })
+
+  it('gives each option its type, its title, its description and its default', async () => {
+    const list = await specs()
+    const config = read('.claude-plugin/plugin.json').userConfig
+    for (const spec of list) {
+      const entry = config[spec.key]
+      assert.ok(entry, `${spec.key} is declared`)
+      const want = spec.type === 'choice' ? 'string' : spec.type
+      assert.equal(entry.type, want, `${spec.key}: type`)
+      assert.equal(entry.title, spec.title, `${spec.key}: title`)
+      assert.equal(typeof entry.description, 'string', `${spec.key}: description is a string`)
+      assert.ok(entry.description.trim() !== '', `${spec.key}: description is not empty`)
+      assert.equal(entry.description, spec.description, `${spec.key}: description equals the spec's`)
+      assert.equal(entry.default, spec.default, `${spec.key}: default`)
+    }
+  })
+
+  it('gives a choice its `options` in the order of its choices, and a number its min and max', async () => {
+    const list = await specs()
+    const config = read('.claude-plugin/plugin.json').userConfig
+    for (const spec of list) {
+      const entry = config[spec.key]
+      assert.ok(entry, `${spec.key} is declared`)
+      if (spec.type === 'choice') {
+        assert.deepEqual(entry.options, [...spec.choices], `${spec.key}: options`)
+        assert.ok(!('min' in entry) && !('max' in entry), `${spec.key}: a choice has no range`)
+      } else if (spec.type === 'number') {
+        assert.equal(entry.min, spec.min, `${spec.key}: min`)
+        assert.equal(entry.max, spec.max, `${spec.key}: max`)
+        assert.ok(!('options' in entry), `${spec.key}: a number has no options`)
+      } else {
+        assert.ok(!('options' in entry) && !('min' in entry) && !('max' in entry), `${spec.key}: a boolean has neither`)
+      }
+    }
+  })
+
+  it('has the ten options of the contract', async () => {
+    const list = await specs()
+    assert.deepEqual(list.map(s => s.key), ['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'kikiTime', 'kikiSpinner'])
+  })
+})
+
+describe('plugin.json', () => {
+  it('is named wallpaper', () => {
+    assert.equal(read('.claude-plugin/plugin.json').name, 'wallpaper')
+  })
+
+  it('has no version field: every commit pushed to GitHub is an update', () => {
+    assert.ok(!('version' in read('.claude-plugin/plugin.json')), 'plugin.json must not pin a `version`')
+  })
+
+  it('describes Kiki and the black hole, and says nothing of a picture or a video of your own', () => {
+    const { description } = read('.claude-plugin/plugin.json')
+    assert.equal(typeof description, 'string')
+    assert.match(description, /kiki/i)
+    assert.match(description, /black hole/i)
+    assert.doesNotMatch(description, /picture|video|ffmpeg/i)
+  })
+})
+
+describe('marketplace.json', () => {
+  it('is named cwallpaper, with one plugin entry, wallpaper, sourced from ./, and no version', () => {
+    const market = read('.claude-plugin/marketplace.json')
+    assert.equal(market.name, 'cwallpaper')
+    assert.ok(!('version' in market), 'the marketplace pins no `version`')
+    assert.equal(market.plugins.length, 1)
+    const [entry] = market.plugins
+    assert.equal(entry.name, 'wallpaper')
+    assert.equal(entry.source, './')
+    assert.ok(!('version' in entry), 'the plugin entry pins no `version`')
+  })
+})
+
+describe('the modules under hooks/core/ import under Node as they are', () => {
+  for (const name of CORE) {
+    it(`${name}.ts`, async () => {
+      const mod = await core(name)
+      assert.ok(mod && typeof mod === 'object')
+      assert.ok(Object.keys(mod).length > 0, `${name}.ts exports something`)
+    })
+  }
+})
