@@ -98,6 +98,23 @@
       "title": "Kiki: cat spinner",
       "description": "Adds a small cat face to the line that shows while Claude works, while Kiki is the wallpaper.",
       "default": true
+    },
+    "blackholeSize": {
+      "type": "string",
+      "title": "Black hole: size",
+      "description": "How large the black hole is drawn over the chat column: small, medium or large.",
+      "default": "medium",
+      "options": [
+        "small",
+        "medium",
+        "large"
+      ]
+    },
+    "blackholeCalm": {
+      "type": "boolean",
+      "title": "Black hole: calmer motion",
+      "description": "Slows and softens the black hole: the disc streams more gently, fewer streaks and clumps, dimmer matter falling in.",
+      "default": false
     }
   }
 }
