@@ -21,12 +21,25 @@
 // WHAT THEY ASSUME ABOUT tools/render.mjs: nothing new is needed (see blackhole-kit.mjs): the frame time is changed by
 // writing `r.fps` between frames.
 //
+//   4. The disc comes back after the lens table was emptied, also when the geometry was worked out while it was empty
+//      (480x300, prompt box 0.2, 0.05, 0.8, 0.15, each case against a control run that is the same but for the emptying):
+//      a. the lens table zeroed before frame 90, the prompt box moved in one frame to left 0.3, right 0.9 at frame 100, the
+//         saved table put back before frame 130. Frames 91 to 129 are all alpha 0 (the shader draws nothing while the
+//         table reads empty); at frame 200 the disc is back: lit samples (red + green + blue over 0.2, as above)
+//         within 15% of the control's, the disc's mean within 30% of the control's, the shadow at the formulas' new place.
+//      b. the lens table, the `state` buffer and the `geo` buffer all zeroed before frame 90 (what an app might do at a
+//         resize), the table put back before frame 120, no change of geometry: the same three checks at frame 190.
+//      The stand-in lets a test reach the buffers (kit: `api.buffers()`, `snapshot`, `clearBuffer`, `restoreBuffer`, which
+//      write the buffers' `data`), so both cases are pinned. The fault: `geo` keeps what each cell sees under a stamp of the
+//      geometry it was worked out for and works it out again only when the geometry changes; worked out while the table
+//      reads empty it keeps zeros under a good stamp, and the disc stays missing when the table returns.
+//
 // Why these fail now: the dim red dots of the calm motion swing in the red lane; a box under 80 points wide is read as a
 // real one (a blank picture); the digits follow the rate's rounding every time it crosses a whole number. The numbers
 // it gives today are in each failure message.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { drive, excess, lane, PROMPT } from './blackhole-kit.mjs'
+import { discMean, drive, excess, geometry, lane, measureShadow, placeProblem, PROMPT } from './blackhole-kit.mjs'
 
 describe('no cell flickers in calm motion (each colour lane on its own)', () => {
   const lanesName = ['red', 'green', 'blue']
@@ -133,5 +146,72 @@ describe('the frames-a-second digits hold still when the rate hovers', () => {
     })
     assert.equal(bad, 0)
     assert.ok(changes <= 2, `the readout's box changed on ${changes} of 149 frames while the rate sat at 29.5 (limit 2)`)
+  })
+})
+
+describe('the disc comes back after the lens table was empty', () => {
+  const points = [480, 300]
+  const NEW_BOX = [0.3, 0.05, 0.9, 0.15]
+  const litCount = pic => {
+    let n = 0
+    for (let i = 0; i < pic.length; i += 4) if (pic[i] + pic[i + 1] + pic[i + 2] > 0.2) n++
+    return n
+  }
+  /**
+   * One run. `empty`: false for the control. `wide`: also zero state and geo. `moveAt`: the frame the box jumps (or null),
+   * `emptyAt`, `backAt`, `checkAt`. Gives { lit, mean, shadow, alphaWhileEmpty, geo } at checkAt.
+   */
+  async function run({ empty, wide, moveAt, emptyAt, backAt, checkAt }) {
+    let saved = null
+    let alphaWhileEmpty = 0
+    let out = null
+    const g = geometry(points, moveAt === null ? PROMPT : NEW_BOX)
+    const bad = await drive({
+      res: points,
+      points,
+      composer: PROMPT,
+      frames: checkAt + 1,
+      draw: f => (f > emptyAt && f < backAt) || f === checkAt,
+      tweak: (f, api) => {
+        if (f === moveAt) api.setComposer(NEW_BOX)
+        if (!empty) return
+        if (f === emptyAt) {
+          const b = api.buffers()
+          saved = api.snapshot(b.lens)
+          api.clearBuffer(b.lens)
+          if (wide) {
+            api.clearBuffer(b.state)
+            api.clearBuffer(b.geo)
+          }
+        }
+        if (f === backAt) api.restoreBuffer(api.buffers().lens, saved)
+      },
+      onFrame: (f, pic, r) => {
+        if (f === checkAt) {
+          const lum = r.luminance(pic)
+          out = { lit: litCount(pic), mean: discMean(lum, r.w, r.h, g), shadow: measureShadow(lum, r.w, r.h, g) }
+        } else for (let i = 3; i < pic.length; i += 4) alphaWhileEmpty = Math.max(alphaWhileEmpty, pic[i])
+      },
+    })
+    assert.equal(bad, 0)
+    return { ...out, alphaWhileEmpty, g }
+  }
+  function check(got, control, label) {
+    const numbers = `lit ${got.lit} against ${control.lit} in the control; disc mean ${got.mean.toFixed(5)} against ${control.mean.toFixed(5)}`
+    assert.ok(control.lit > 1000, `the control run is nearly blank (${control.lit} lit samples)`)
+    assert.ok(Math.abs(got.lit / control.lit - 1) <= 0.15, `${label}: lit samples are not within 15% of the control's: ${numbers}`)
+    assert.ok(Math.abs(got.mean / control.mean - 1) <= 0.3, `${label}: the disc's mean is not within 30% of the control's: ${numbers}`)
+    assert.equal(placeProblem(got.shadow, got.g), '', `${label}: the shadow is not at the new place (${numbers})`)
+  }
+  it('the table emptied at frame 90, the box moved at 100, the table put back at 130: nothing drawn while empty, the disc back at 200', { timeout: 300000 }, async () => {
+    const control = await run({ empty: false, moveAt: 100, emptyAt: 90, backAt: 130, checkAt: 200 })
+    const got = await run({ empty: true, moveAt: 100, emptyAt: 90, backAt: 130, checkAt: 200 })
+    assert.equal(got.alphaWhileEmpty, 0, `while the table is empty (frames 91 to 129) a pixel has alpha ${got.alphaWhileEmpty}`)
+    check(got, control, 'frame 200')
+  })
+  it('the table, state and geo all cleared at frame 90, the table put back at 120, no change of geometry: the disc back at 190', { timeout: 300000 }, async () => {
+    const control = await run({ empty: false, wide: true, moveAt: null, emptyAt: 90, backAt: 120, checkAt: 190 })
+    const got = await run({ empty: true, wide: true, moveAt: null, emptyAt: 90, backAt: 120, checkAt: 190 })
+    check(got, control, 'frame 190')
   })
 })

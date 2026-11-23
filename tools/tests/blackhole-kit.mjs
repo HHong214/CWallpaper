@@ -128,7 +128,8 @@ export function placeProblem(m, g) {
  *   res, points, composer, values: as the Renderer takes them (values over BASE)
  *   frames: how many frames to run (0 to frames - 1)
  *   draw(f): whether frame f's picture is wanted (undrawn frames are only stepped, which is cheap)
- *   tweak(f, api): called before frame f; api = { setWindow([pw, ph]), setComposer([l, b, r, t]), setValues(obj), setFps(n) }
+ *   tweak(f, api): called before frame f; api = { setWindow([pw, ph]), setComposer([l, b, r, t]), setValues(obj), setFps(n),
+ *     buffers(), snapshot(buf), clearBuffer(buf), restoreBuffer(buf, copy) }
  *   onFrame(f, pic, r): called for each drawn frame with the premultiplied picture (y up) and the renderer
  * Returns the renderer's count of non-finite values.
  */
@@ -147,6 +148,28 @@ export async function drive({ res, points = res, composer = PROMPT, values = {},
     },
     setFps: n => {
       r.fps = n
+    },
+    // The renderer's buffers, for a test that empties or restores one between frames (the app can lose a buffer's
+    // contents, say at a resize). `buffers()` finds them in the shader's pass list once frame 0 has run:
+    // lens (the `once` buffer), state (4 by 1 texels) and geo (the first buffer drawn at a texel a cell).
+    // `snapshot` copies what a buffer holds, `clearBuffer` zeroes it (what the next frame reads), `restoreBuffer` puts a copy back.
+    buffers: () => {
+      const bs = r.shader.passes.filter(b => b.kind === 'buffer' && b.data)
+      const found = {
+        lens: bs.find(b => b.once),
+        state: bs.find(b => b.w === 4 && b.h === 1),
+        geo: bs.find(b => b.options.scale !== undefined),
+      }
+      for (const k of Object.keys(found)) if (!found[k]) throw new Error(`blackhole-kit: no ${k} buffer found in the shader's passes`)
+      return found
+    },
+    snapshot: b => new Float32Array(b.data),
+    clearBuffer: b => {
+      b.data.fill(0)
+      b.next.fill(0)
+    },
+    restoreBuffer: (b, copy) => {
+      b.data.set(copy)
     },
   }
   for (let f = 0; f < frames; f++) {
