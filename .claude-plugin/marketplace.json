@@ -1,0 +1,15 @@
+{
+  "name": "wallpaper-local",
+  "owner": {
+    "name": "local"
+  },
+  "metadata": {
+    "description": "The wallpaper mod, read from this folder."
+  },
+  "plugins": [
+    {
+      "name": "wallpaper",
+      "source": "./"
+    }
+  ]
+}

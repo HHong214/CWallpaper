@@ -1,0 +1,28 @@
+{
+  "name": "wallpaper",
+  "version": "1.9.0",
+  "description": "A moving wallpaper and matching colors for the whole app: Kiki (pixel art of a young witch and her black cat floating on a broom toward a seaside city, following your clock from day to sunset to night), a black hole in ASCII art drawn by code (a gold ring, its disc bent over and under it, everything streaming in), or a picture or short video loop of your own. /wallpaper settings sets how see-through and blurred the panels are.",
+  "author": {
+    "name": "local"
+  },
+  "keywords": [
+    "mod",
+    "theme",
+    "look",
+    "backdrop",
+    "wallpaper",
+    "night",
+    "anime",
+    "pixel-art",
+    "ascii-art",
+    "black-hole"
+  ],
+  "userConfig": {
+    "spinner": {
+      "type": "boolean",
+      "title": "Spinner: cat face",
+      "description": "Adds a small cat face to the line that shows while Claude works, in the Kiki theme.",
+      "default": true
+    }
+  }
+}
