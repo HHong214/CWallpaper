@@ -188,7 +188,7 @@ Each rule has its reason. Break none of them without telling the owner.
 - [ ] **No per-frame random term decides what a cell shows.** Fix each cell's offset, give every switch a margin each way (a blank cell lights above one level and goes blank below a lower one), and hold a glyph at least half a second (1 s where bright, 1.8 s in calmer motion), so no dot turns more than three times a second.
 - [ ] **Check each colour lane for flicker, not only luminance.** Dim red dots hide in luminance.
 - [ ] **A number measured each frame is smoothed and held before it is drawn.** The frames-a-second digits move only when the rate has left them by 0.8.
-- [ ] **A table made once carries a mark** (the lens's fourth lane is 1). If it reads empty, draw nothing (alpha 0), never a wrong picture.
+- [ ] **A table made once carries a mark** (the lens's fourth lane is 1). If it reads empty, draw nothing (alpha 0), never a wrong picture, and keep nothing that was worked out from it: the black hole's cached cells take a stamp that never matches while the mark is missing, or the disc stays gone after the table returns.
 - [ ] **Test the changes, not only the settled picture.** Drive the inputs between frames with `drive()` from `tools/tests/blackhole-kit.mjs`: the window, the prompt box, the values, the frame time.
 - [ ] **Fine characters vanish behind blurred panels.** At a blur of 8 nothing is left of 6 by 10 point characters; a blur of about 1 keeps them. Say so to the owner. Do not change their setting.
 - [ ] **Text in an SVG keeps to a grid only if each run's `textLength` is its character count less one, times the cell, plus one character's advance** (`still.ts`: `(chars.length - 1) * cellW + ADVANCE`), so the browser's own font does not shift the columns.

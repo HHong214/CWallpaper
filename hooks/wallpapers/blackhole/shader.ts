@@ -403,7 +403,8 @@ const geo: Buf = buffer({ scale: 1 / CELL_W, float: 32, filter: 'nearest' }, p =
   const cxs = latched.x
   const cys = latched.y
   const W = max(latched.z, 1)
-  if (col < 0.5 && row < 0.5) return vec4(R, cxs, cys, W) // the stamp: what the rest was worked out for
+  const lensOk = lens.at(vec2(0, 0)).w > 0.5 // cells worked out from an empty lens table must not be kept
+  if (col < 0.5 && row < 0.5) return vec4(lensOk ? R : -1, cxs, cys, W) // the stamp: what the rest was worked out for (never a match while the table reads empty)
   if (row * CELL_H > size.y + CELL_H) return vec4(0, 0, 0, 0)
   const stamp = geo.at(vec2(0, 0))
   const same =
