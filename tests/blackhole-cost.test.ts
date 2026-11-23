@@ -1,4 +1,5 @@
-// Tests for what the black hole's motion COSTS: hooks/blackhole.ts (`blackhole(opts)`).
+// Tests for what the black hole's motion COSTS: hooks/wallpapers/blackhole/svg.ts (`blackhole(opts)`; it was
+// hooks/blackhole.ts before the rebuild, and the contents of this file are as they were).
 //
 // The fault: a frame that is not showing is hidden by `opacity:0` alone. When the app draws the SVG as an
 // image, an element at opacity 0 whose opacity is animated is still painted, so each step paints all of
@@ -39,8 +40,8 @@
 //   - "Shown by opacity" is opacity above 0; "painted" is visibility other than `hidden`.
 import { expect, test } from 'claude-code/testing'
 
-import { blackhole } from '../hooks/blackhole'
-import { FRAMES } from '../hooks/blackhole/field'
+import { blackhole } from '../hooks/wallpapers/blackhole/svg'
+import { FRAMES } from '../hooks/wallpapers/blackhole/field'
 
 const MOTIONS = ['smooth', 'light'] as const
 

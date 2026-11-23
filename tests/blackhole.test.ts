@@ -1,4 +1,5 @@
-// Tests for the black hole wallpaper's field: hooks/blackhole/field.ts (pure, no engine imports, never throws).
+// Tests for the black hole wallpaper's field: hooks/wallpapers/blackhole/field.ts (pure, no engine imports, never
+// throws). The file moved from hooks/blackhole/field.ts with the rebuild; its contents are as they were.
 //
 // THE CONTRACT these tests pin (written before the code; the builder works to it):
 //
@@ -30,7 +31,7 @@
 // missing module cannot be caught inside a test; each new module has its own test file for that reason.
 import { expect, test } from 'claude-code/testing'
 
-import { COLS, FRAMES, GEOMETRY, RAMP, ROWS, flowAt, frame } from '../hooks/blackhole/field'
+import { COLS, FRAMES, GEOMETRY, RAMP, ROWS, flowAt, frame } from '../hooks/wallpapers/blackhole/field'
 
 const ramp: string[] = [...(RAMP as unknown as string)]
 const idx = (ch: string | undefined): number => ramp.indexOf(ch ?? ' ')

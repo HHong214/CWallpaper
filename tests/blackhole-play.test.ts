@@ -1,4 +1,5 @@
-// Tests for how the black hole PLAYS and LAYS OUT its frames: hooks/blackhole.ts (`blackhole(opts)`).
+// Tests for how the black hole PLAYS and LAYS OUT its frames: hooks/wallpapers/blackhole/svg.ts (`blackhole(opts)`;
+// it was hooks/blackhole.ts before the rebuild, and the contents of this file are as they were).
 // Added after a review found four faults the first tests did not cover. Each test pins one of them.
 //
 //   1. No gap: in `smooth` and `light`, at every instant of the loop at least one frame is visible, never
@@ -35,8 +36,8 @@
 //     Runs of one character carry no textLength and are not checked; every longer run must have one.
 import { expect, test } from 'claude-code/testing'
 
-import { blackhole } from '../hooks/blackhole'
-import { COLS, FRAMES } from '../hooks/blackhole/field'
+import { blackhole } from '../hooks/wallpapers/blackhole/svg'
+import { COLS, FRAMES } from '../hooks/wallpapers/blackhole/field'
 
 const MOTIONS = ['smooth', 'light'] as const
 

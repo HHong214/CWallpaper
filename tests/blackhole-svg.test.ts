@@ -1,4 +1,5 @@
-// Tests for the black hole's SVG builder: hooks/blackhole.ts.
+// Tests for the black hole's SVG builder: hooks/wallpapers/blackhole/svg.ts (it was hooks/blackhole.ts before the
+// rebuild; the export is the same `blackhole(opts)`).
 //
 // THE CONTRACT these tests pin (the field's own contract is in blackhole.test.ts):
 //
@@ -32,8 +33,8 @@
 // plain import declaration, so each new module has its own test file.
 import { expect, mock, test } from 'claude-code/testing'
 
-import { blackhole } from '../hooks/blackhole'
-import { FRAMES, frame } from '../hooks/blackhole/field'
+import { blackhole } from '../hooks/wallpapers/blackhole/svg'
+import { FRAMES, frame } from '../hooks/wallpapers/blackhole/field'
 
 type Motion = 'smooth' | 'light' | 'off'
 const MOTIONS: Motion[] = ['smooth', 'light', 'off']
@@ -189,24 +190,20 @@ test('amber characters on near-black, in a monospace font, never rotated or skew
   }
 })
 
-// The mod's own Backdrop gives exactly what the builder makes (the harness is as backdrop.test.tsx's).
+// The mod's own Backdrop gives exactly what the builder makes. The options of the test (the manifest's) now say
+// the wallpaper, the motion and the dimming that 1.9.0 had the test set with `/wallpaper` commands and the store.
 const propsOf = (name: string, plugin = 'wallpaper') => ({ id: name, scene: name, plugin, glass: false }) as never
 const BACKDROP = { plugin: 'wallpaper', component: 'Backdrop', props: propsOf('blackhole') } as const
-const wallpaper = (args: string) => ({ command: 'wallpaper', args }) as never
 const WAKE_MARK = /<g id="kw[0-9a-z]+"\/>/g
 
-test('/wallpaper blackhole draws exactly the builder\'s picture, in each motion', { options: { spinner: true } }, async ($, on) => {
-  mock.clock(on)
-  mock.store(on)
-  on('command.register', () => ({ value: { command: 'wallpaper' } }))
-  on('theme.set', () => ({ value: { isDrawn: true, requestId: 'backdrop' } }))
-  on('session.start', (_, e) => ({ cwd: e.cwd }))
-  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await $.command.run(wallpaper('blackhole'))
-  // No dimming, so the picture is the builder's own whichever way the mod darkens a scene.
-  await $.command.run(wallpaper('dim 0'))
-  for (const motion of MOTIONS) {
-    await $.command.run(wallpaper(`motion ${motion}`))
+for (const motion of MOTIONS) {
+  test(`the black hole with the options motion ${motion} and dim 0 draws exactly the builder's picture`, { options: { wallpaper: 'blackhole', motion, dim: 0 } }, async ($, on) => {
+    mock.clock(on)
+    mock.store(on)
+    on('command.register', () => ({ value: { command: 'wallpaper' } }))
+    on('theme.set', () => ({ value: { isDrawn: true, requestId: 'backdrop' } }))
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
     const ui = await $.ui.mount({ ...BACKDROP, surface: 'desktop' })
     const walk = (node: unknown, out: string[]): string[] => {
       if (!node || typeof node !== 'object') return out
@@ -219,7 +216,8 @@ test('/wallpaper blackhole draws exactly the builder\'s picture, in each motion'
     const drawn = walk(await ui.drawn(), [])
     await ui.unmount()
     expect([motion, drawn.length]).toEqual([motion, 1])
+    // No dimming, so the picture is the builder's own whichever way the mod darkens a scene.
     const got = (drawn[0] ?? '').replace(WAKE_MARK, '')
     expect([motion, got === build(motion, 0) || got === build(motion)]).toEqual([motion, true])
-  }
-})
+  })
+}
