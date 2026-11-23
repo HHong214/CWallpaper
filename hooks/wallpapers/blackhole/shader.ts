@@ -7,19 +7,22 @@
 // and third the thin ring round the shadow. That is traced once, in M units, into `lens`.
 //
 // Passes, in order:
-//   clock  1 texel: the flow's clock (a phase and a count of whole periods, so it never loops and keeps
-//          its precision), and the measured frames a second
 //   lens   once, 192 by 320 texels over the screen in M units: the radius of the first three crossings
-//          (it reads no value, so the hole's size and place are applied when it is looked up)
+//          (it reads no value, so the hole's size and place are applied when it is looked up); every
+//          texel's fourth lane is 1, the mark that it ran
+//   state  4 texels, read back each frame: the geometry the picture is drawn with (latched), the
+//          picture's light (it fades out, waits and fades in round every change of geometry, and at
+//          the start), the flow's clock, and the frames-a-second readout (smoothed, and held)
 //   geo    a texel a character cell: what of the disc each cell sees (radius, angle, brightness, kind),
-//          six rays a cell; worked out again only when the hole moves or changes size (texel 0,0 keeps
-//          what it was worked out for), else copied
+//          six rays a cell, from the latched geometry; worked out again only when that changes (texel
+//          0,0 keeps what it was worked out for), else copied
 //   flow   a texel a character cell, read back each frame: the brightness the cell is drawn at, eased,
 //          which carries the moving streaks, clumps and infall; and the glyph, which follows them
-//          through a quicker copy, a margin and a short rest between changes (none to or from a
-//          blank), and fades from one glyph to the next
-//   look   a texel a character cell: the two glyphs, how far the fade is, the colour
-//   art    the picture: which cell, which dot of its glyph, what colour
+//          through a quicker copy, a margin each way and a hold of at least HOLD seconds between
+//          changes, and fades from one glyph to the next
+//   look   a texel a character cell: the two glyphs, how far the fade is, the colour (faded by the light)
+//   art    the picture: which cell, which dot of its glyph, what colour; nothing (alpha 0) if the lens
+//          table ever reads empty
 //
 // The flow: two layers of streaks, each carried round (Kepler: faster inside, so they shear and wind)
 // and inward for FLOW_T seconds, fading in and out half a period apart; each new layer starts from new
@@ -33,7 +36,7 @@
 // Everything is drawn on its own near-black ground, opaque, so nothing under the shader shows through.
 import {
   abs, atan, buffer, clamp, composer, cos, dt, exp, first, floor, fract, int, max, min, mix, mod,
-  picture, pow, px, shader, signed, sin, size, smoothstep, sqrt, table, values, vec2, vec4, PI,
+  picture, pow, px, res, shader, signed, sin, size, smoothstep, sqrt, table, values, vec2, vec4, PI,
 } from 'claude-code/shader'
 import type { Buffer as Buf } from 'claude-code/shader'
 
@@ -134,6 +137,15 @@ const FALL_B = 0.98 // a head's brightness
 
 const FADE = 0.3 // seconds one glyph takes to fade into the next
 const HYST = 0.35 // levels the brightness must move past a glyph's own before it changes
+const HOLD = 0.5 // seconds a cell keeps a glyph at least (longer where it is bright), so no dot turns over fast
+const ON_AT = 0.035 // a blank cell takes a glyph above this light ...
+const OFF_AT = 0.015 // ... and a lit one goes blank below this
+
+// changes of geometry and the start: out, settle, in
+const GEO_TOL = 0.4 // points the raw geometry may differ from the latched one (float noise) before it counts
+const FADE_OUT = 0.27 // seconds to fade to the ground
+const SETTLE = 0.17 // seconds the raw geometry must stand still, once dark, before it is latched
+const FADE_IN = 0.55 // seconds to fade back in
 
 // the ground, #060409
 const GR = 0.0235
@@ -196,26 +208,6 @@ function dashes(r: number, a: number, t: number, seed: number): number {
   return h < DASH_P ? across * on * fade : 0
 }
 
-// ---------------------------------------------------------------- clock and frames a second
-
-// x: the flow phase (0..1 of FLOW_T), y: whole periods so far, z: frames a second, smoothed
-const clock: Buf = buffer({ size: [1, 1], float: 32, filter: 'nearest' }, p => {
-  const prev = clock.at(vec2(0, 0))
-  const fresh0 = first || prev.w < 0.5
-  const pace = v.speed * (1 - 0.35 * v.calm)
-  let ph = fresh0 ? 0.3 : prev.x + (clamp(dt, 0, 0.1) * pace) / FLOW_T
-  let n = fresh0 ? 0 : prev.y
-  if (ph >= 1) {
-    ph = ph - 1
-    n = n + 1
-  }
-  // a frame with no time, or a long stall, is not a measurement
-  const timed = dt > 0.002 && dt < 0.5
-  const inst = 1 / max(dt, 0.002)
-  const rate = fresh0 ? (timed ? inst : 30) : timed ? mix(prev.z, inst, 0.05) : prev.z
-  return vec4(ph, n, rate, 1)
-})
-
 // ---------------------------------------------------------------- the lens, traced once
 
 /** The cubic through a and b with slopes da and db (each already times the step), at t from 0 to 1. */
@@ -275,27 +267,114 @@ const lens: Buf = buffer({ size: [LENS_W, LENS_H], float: 32, filter: 'nearest',
 
 // ---------------------------------------------------------------- where the hole sits
 
-/** R, the shadow's radius, and the cell-centred centre, in points; W, the chat column's width. */
-function placeR(): number {
-  const none = abs(composer.x) + abs(composer.y) + abs(composer.z) + abs(composer.w) < 0.000001
-  const W = none ? 0.6 * size.x : (composer.z - composer.x) * size.x
-  const H = none ? size.y : (1 - composer.w) * size.y
-  return max(v.size * min(clamp(0.16 * W, 48, 150), 0.21 * H), 1)
+// From the window and the prompt box's left and right only: its top and bottom move as the owner types,
+// and nothing may move with them. A box under 80 points wide counts as none.
+function noBox(): boolean {
+  return (composer.z - composer.x) * size.x < 80
 }
+/** W, the chat column's width, in points. */
 function placeW(): number {
-  const none = abs(composer.x) + abs(composer.y) + abs(composer.z) + abs(composer.w) < 0.000001
-  return none ? 0.6 * size.x : max((composer.z - composer.x) * size.x, 1)
+  return noBox() ? 0.6 * size.x : (composer.z - composer.x) * size.x
 }
+/** R, the shadow's radius, in points. */
+function placeR(): number {
+  return max(v.size * min(clamp(0.16 * placeW(), 48, 150), 0.18 * size.y), 1)
+}
+/** The centre across, moved to the nearest cell's centre. */
 function placeX(): number {
-  const none = abs(composer.x) + abs(composer.y) + abs(composer.z) + abs(composer.w) < 0.000001
-  const cx = none ? 0.5 * size.x : 0.5 * (composer.x + composer.z) * size.x
+  const cx = noBox() ? 0.5 * size.x : 0.5 * (composer.x + composer.z) * size.x
   return (floor(cx / CELL_W) + 0.5) * CELL_W
 }
+/** The centre up, moved to the nearest cell's centre. */
 function placeY(): number {
-  const none = abs(composer.x) + abs(composer.y) + abs(composer.z) + abs(composer.w) < 0.000001
-  const cy = none ? 0.5 * size.y : 0.5 * (composer.w + 1) * size.y
+  const cy = noBox() ? 0.5 * size.y : 0.57 * size.y
   return (floor(cy / CELL_H) + 0.5) * CELL_H
 }
+
+// ---------------------------------------------------------------- the state: geometry, fade, clock
+
+// The geometry the picture is drawn with (centre, W, R, and the size of a pixel in points) is latched
+// here. When the window, the prompt box's left or right, or `size` gives another, the picture fades to
+// the ground still drawn with the old one, stays dark while the change goes on, takes the new one once
+// it has stood still, and fades back in; so no cell ever jumps to another part of the disc while it
+// shows. A new pixel size (the same window drawn at another scale) moves every pixel to another point,
+// so there the light is cut at once instead of faded. Empty or cleared state is the start: dark, latch,
+// fade in.
+//   texel 0: the latched centre across and up, W, R
+//   texel 1: the picture's light (0 dark to 1; -1 when the lens table reads empty), seconds the raw
+//            geometry has stood still, the latched pixel's size in points, the last frame's pixel size
+//   texel 2: the last frame's raw centre across and up, W, R
+//   texel 3: the flow's clock (a phase of FLOW_T and a count of whole periods, so it never loops and
+//            keeps its precision), the frames a second (smoothed), and the number the readout shows
+const state: Buf = buffer({ size: [4, 1], float: 32, filter: 'nearest' }, p => {
+  const s0 = state.at(vec2(0, 0))
+  const s1 = state.at(vec2(1, 0))
+  const s2 = state.at(vec2(2, 0))
+  const s3 = state.at(vec2(3, 0))
+  const dtc = clamp(dt, 0, 0.1)
+  const rx = placeX()
+  const ry = placeY()
+  const rw = placeW()
+  const rr = placeR()
+  const empty = first || s0.z < 0.5 || s1.z <= 0
+  // the picture's pixel, in points (in a buffer `px` is the buffer's own texel)
+  const pxNow = size.x / max(res.x, 1)
+  const moved = abs(rx - s2.x) + abs(ry - s2.y) + abs(rw - s2.z) + abs(rr - s2.w) > 0.01 || abs(pxNow - s1.w) > 0.00001
+  const still = empty || moved ? 0 : min(s1.y + dtc, 9)
+  const differs =
+    abs(rx - s0.x) > GEO_TOL || abs(ry - s0.y) > GEO_TOL || abs(rw - s0.z) > GEO_TOL || abs(rr - s0.w) > GEO_TOL || abs(pxNow - s1.z) > 0.001 * pxNow
+  let lx = s0.x
+  let ly = s0.y
+  let lw = s0.z
+  let lr = s0.w
+  let lpx = s1.z
+  let light = clamp(s1.x, 0, 1)
+  if (empty) {
+    lx = rx
+    ly = ry
+    lw = rw
+    lr = rr
+    lpx = pxNow
+    light = 0
+  } else if (differs) {
+    // a new pixel size (the window drawn at another scale) moves every pixel to another point, so the
+    // light is cut at once rather than faded; any other change fades out
+    light = abs(pxNow - s1.z) > 0.001 * pxNow ? 0 : max(light - dtc / FADE_OUT, 0)
+    if (light <= 0 && still >= SETTLE) {
+      lx = rx
+      ly = ry
+      lw = rw
+      lr = rr
+      lpx = pxNow
+    }
+  } else {
+    light = min(light + dtc / FADE_IN, 1)
+  }
+  // the lens table's own mark (its texels' fourth lane is 1): if it ever reads empty, draw nothing
+  const shown = lens.at(vec2(0, 0)).w > 0.5 ? light : -1
+
+  // the clock, and the frames a second: a frame with no time, or a long stall, is not a measurement
+  const fresh0 = first || s3.z < 0.5
+  const pace = v.speed * (1 - 0.35 * v.calm)
+  let ph = fresh0 ? 0.3 : s3.x + (dtc * pace) / FLOW_T
+  let n = fresh0 ? 0 : s3.y
+  if (ph >= 1) {
+    ph = ph - 1
+    n = n + 1
+  }
+  const timed = dt > 0.002 && dt < 0.5
+  const inst = 1 / max(dt, 0.002)
+  const rate = fresh0 ? (timed ? inst : 30) : timed ? mix(s3.z, inst, 0.04) : s3.z
+  // the number shown moves only when the rate has left it by most of a frame, so a rate that hovers
+  // between two numbers does not flip the digits
+  const digits = fresh0 || abs(rate - s3.w) > 0.8 ? floor(rate + 0.5) : s3.w
+
+  const i = p.cell.x
+  if (i < 0.5) return vec4(lx, ly, lw, lr)
+  if (i < 1.5) return vec4(shown, still, lpx, pxNow)
+  if (i < 2.5) return vec4(rx, ry, rw, rr)
+  return vec4(ph, n, rate, digits)
+})
 
 /** The disc's light from radius r with Doppler factor g (before the flow's texture). */
 function glow(r: number, g: number, rOut: number): number {
@@ -319,10 +398,11 @@ function ringGlow(al: number): number {
 const geo: Buf = buffer({ scale: 1 / CELL_W, float: 32, filter: 'nearest' }, p => {
   const col = p.cell.x
   const row = p.cell.y
-  const R = placeR()
-  const cxs = placeX()
-  const cys = placeY()
-  const W = placeW()
+  const latched = state.at(vec2(0, 0)) // drawn with the latched geometry, never the raw one
+  const R = max(latched.w, 1)
+  const cxs = latched.x
+  const cys = latched.y
+  const W = max(latched.z, 1)
   if (col < 0.5 && row < 0.5) return vec4(R, cxs, cys, W) // the stamp: what the rest was worked out for
   if (row * CELL_H > size.y + CELL_H) return vec4(0, 0, 0, 0)
   const stamp = geo.at(vec2(0, 0))
@@ -429,7 +509,8 @@ const flow: Buf = buffer({ scale: 1 / CELL_W, float: 32, filter: 'nearest' }, p 
   const stamp = geo.at(vec2(0, 0))
   const gm = geo.at(p.cell)
   const prev = flow.at(p.cell)
-  const ck = clock.at(vec2(0, 0))
+  const ck = state.at(vec2(3, 0)) // the clock
+  const st1 = state.at(vec2(1, 0)) // the picture's light
   const corner = col < 0.5 && row < 0.5
   // the corner the frames-a-second readout uses (96 by 24 points) is kept clear, whatever it shows
   const boxed = col < 16 && row < 3
@@ -470,7 +551,10 @@ const flow: Buf = buffer({ scale: 1 / CELL_W, float: 32, filter: 'nearest' }, p 
       max(clump(r, phi, turn, 8.4, 8, 0.55), clump(r, phi, turn, 9.6, 6, 0.8)),
     )
     // a streak is 1.3, a gap GAP; calm narrows that and leaves out most of the clumps
-    const tex = mix(mix(GAP, 0.58, calm), 1.3 - 0.2 * calm, streak) * (0.88 + 0.24 * n) + 1.1 * (1 - 0.65 * calm) * hot
+    // the clumps brighten the streaks they pass over (no pulse of their own in a gap, so a spot is not
+    // turned round by a clump and a streak apart)
+    const lane = mix(mix(GAP, 0.58, calm), 1.3 - 0.2 * calm, streak)
+    const tex = (lane + 1.2 * (1 - 0.65 * calm) * hot * streak) * (0.88 + 0.24 * n)
     const base = (1.35 * S) / (0.32 + S) // the fixed light, eased off at the top so the streaks still show
     // the ring glows steadily, a slow shimmer only
     target = ring > 0.5 ? base * (0.94 + 0.16 * (n - 0.5)) : base * tex
@@ -478,7 +562,7 @@ const flow: Buf = buffer({ scale: 1 / CELL_W, float: 32, filter: 'nearest' }, p 
     // contrast, the glyphs the density, which follows the fixed light less eased off than the colour,
     // so the side coming towards us is the denser too
     const dense = 1.05 * pow(S, 0.7)
-    drive = ring > 0.5 ? target : dense * mix(0.62 + 0.3 * tex, 0.75 + 0.25 * tex, calm)
+    drive = ring > 0.5 ? target : dense * mix(0.62 + 0.3 * lane, 0.75 + 0.25 * lane, calm)
   }
 
   // the infall: heads with fading tails on curved paths, closing in faster and stretching near the
@@ -524,16 +608,22 @@ const flow: Buf = buffer({ scale: 1 / CELL_W, float: 32, filter: 'nearest' }, p 
   const dtc = clamp(dt, 0, 0.1)
   const kF = 1 - exp(-dtc / mix(0.07, 0.4, calm))
   const kS = 1 - exp(-dtc / mix(0.12, 1, calm))
-  const start = first || prev.z < 0.5
+  // a start: an empty or cleared buffer, or a picture faded to the ground (where the geometry may be
+  // new): each cell takes its light and its glyph as they are, unseen
+  const start = first || prev.z < 0.5 || st1.x < 0.001
   const shown = start ? target : mix(prev.y, target, kF)
-  // a bright cell rests longer between glyphs: there a glyph's dots turning over are a large swing
-  const rest = mix(mix(0.45, 1, smoothstep(0.45, 1, shown)), 1.8, calm)
+  // every cell keeps a glyph at least HOLD seconds (a bright one longer: there a glyph's dots turning
+  // over are a large swing), so no dot turns over more than twice a second
+  const rest = mix(mix(HOLD, 1, smoothstep(0.45, 1, shown)), 1.8, calm)
   const slow = start ? drive : mix(prev.w, drive, kS)
+  // the glyph's level: from the light, with a fixed offset of the cell's own (no part of it changes
+  // from frame to frame by itself), and a margin each way at the blank
   const dither = (dq / 15 - 0.5) * 0.9
   const gc = mod(prev.x, 64)
   // a blank cell takes its glyph from the light as it is now, so a head arriving shows at once
   const g = gc < 0.5 ? max(slow, drive) : slow
-  const L = g < 0.02 ? 0 : clamp(0.55 + g * 10.4 + dither, 1, TOP_LEVEL + 0.49)
+  const lit = gc < 0.5 ? g >= ON_AT : g >= OFF_AT
+  const L = lit ? clamp(0.55 + g * 10.4 + dither, 1, TOP_LEVEL + 0.49) : 0
   const want = floor(L + 0.5)
   const gp = mod(floor(prev.x / 64), 64)
   let cur = gc
@@ -543,8 +633,7 @@ const flow: Buf = buffer({ scale: 1 / CELL_W, float: 32, filter: 'nearest' }, p 
     cur = want
     before = want
     since = 9
-  } else if ((since >= rest || gc < 0.5 || want < 0.5) && abs(L - gc) > 0.5 + HYST && abs(want - gc) > 0.5) {
-    // from a blank or to one every dot moves the way the light does, so that needs no rest
+  } else if (since >= rest && abs(want - gc) > 0.5 && (want < 0.5 || gc < 0.5 || abs(L - gc) > 0.5 + HYST)) {
     before = gc
     cur = want
     since = 0
@@ -566,10 +655,14 @@ const look: Buf = buffer({ scale: 1 / CELL_W, float: 32, filter: 'nearest' }, p 
   const stray = floor(hi / 64)
   let fd = clamp((st.z - 1) / FADE, 0, 1)
   let hot = st.y
+  // the picture's light: 0 at the start and while the geometry changes, 1 when settled
+  const mark = state.at(vec2(1, 0)).x // -1 when the lens table reads empty
+  let light = clamp(mark, 0, 1)
 
-  // the frames a second, bottom left: "NNN fps" in the second row
+  // the frames a second, bottom left: "NNN fps" in the second row (they stay lit through a fade)
   if (v.fps >= 0.5 && row > 0.5 && row < 1.5 && col > 0.5 && col < 7.5) {
-    const n = clamp(floor(clock.at(vec2(0, 0)).z + 0.5), 0, 999)
+    const n = clamp(state.at(vec2(3, 0)).w, 0, 999)
+    light = 1
     const d = col < 1.5 ? floor(n / 100) : col < 2.5 ? mod(floor(n / 10), 10) : mod(n, 10)
     const blank = (col < 1.5 && n < 100) || (col < 2.5 && n < 10) || (col > 3.5 && col < 4.5)
     gc = col > 4.5 ? LETTER_F + col - 5 : blank ? 0 : DIGIT0 + d
@@ -590,15 +683,23 @@ const look: Buf = buffer({ scale: 1 / CELL_W, float: 32, filter: 'nearest' }, p 
     cg = stray < 1.5 ? 0.74 * k : 0.38 * k
     cb = stray < 1.5 ? 0.7 * k : 0.92 * k
   }
+  // dimmed, and faded toward the ground by the picture's light
   const keep = 1 - v.dim
-  return vec4(gc + 32 * gp + 1024 * floor(fd * 31 + 0.5), cr * keep, cg * keep, cb * keep)
+  return vec4(
+    mark < -0.5 ? -1 : gc + 32 * gp + 1024 * floor(fd * 31 + 0.5),
+    (GR + (cr - GR) * light) * keep,
+    (GG + (cg - GG) * light) * keep,
+    (GB + (cb - GB) * light) * keep,
+  )
 })
 
 // ---------------------------------------------------------------- the picture
 
 const art = picture(p => {
-  const col = floor(p.point.x / CELL_W)
-  const row = floor(p.point.y / CELL_H)
+  const ptx = p.point.x
+  const pty = p.point.y
+  const col = floor(ptx / CELL_W)
+  const row = floor(pty / CELL_H)
   const st = look.at(vec2(col, row))
   const code = st.x
   const gc = mod(code, 32)
@@ -608,8 +709,8 @@ const art = picture(p => {
   // the dot: one point square, read at the pixel's centre, so every pixel is wholly dot or wholly
   // ground (no blur); the glyph's foot sits on a pixel edge, and the cell's edges are whole points
   const foot = floor(1.5 / max(px, 0.05) + 0.5) * px
-  const lx = p.point.x - col * CELL_W
-  const ly = p.point.y - row * CELL_H
+  const lx = ptx - col * CELL_W
+  const ly = pty - row * CELL_H
   const dc = floor(lx)
   const dr = floor(foot + 7 - ly)
   const inside = dc < 4.5 && dr > -0.5 && dr < 6.5
@@ -619,7 +720,13 @@ const art = picture(p => {
   const bp = signed((FONT.at(gp * 7 + rr) >> sh) & 1)
   const cov = inside ? mix(bp, bc, fd) : 0
   const keep = 1 - v.dim
-  return vec4(GR * keep + (st.y - GR * keep) * cov, GG * keep + (st.z - GG * keep) * cov, GB * keep + (st.w - GB * keep) * cov, 1)
+  const a = code < -0.5 ? 0 : 1 // the lens table read empty: nothing
+  return vec4(
+    (GR * keep + (st.y - GR * keep) * cov) * a,
+    (GG * keep + (st.z - GG * keep) * cov) * a,
+    (GB * keep + (st.w - GB * keep) * cov) * a,
+    a,
+  )
 })
 
-export default shader({ fps: 30, passes: [clock, lens, geo, flow, look, art] })
+export default shader({ fps: 30, passes: [lens, state, geo, flow, look, art] })

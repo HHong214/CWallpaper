@@ -26,7 +26,8 @@ const num = (v: number): string => String(Math.round(v * 100) / 100)
 function sizeOf(s: StillSettings | undefined): number {
   const own = s && typeof s === 'object' && s.own && typeof s.own === 'object' ? (s.own as Record<string, unknown>).blackhole : undefined
   const size = own && typeof own === 'object' ? (own as Record<string, unknown>).size : undefined
-  return typeof size === 'string' && size in SIZES ? (SIZES[size] ?? 1) : 1
+  // its own keys only: `in` would also take inherited names such as toString
+  return typeof size === 'string' && Object.prototype.hasOwnProperty.call(SIZES, size) ? (SIZES[size] ?? 1) : 1
 }
 function dimOf(s: StillSettings | undefined): number {
   const d = s && typeof s === 'object' ? s.dim : undefined
