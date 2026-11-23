@@ -34,7 +34,7 @@ hooks/wallpapers/blackhole/       shader.ts (the GPU shader), still.ts (the stil
 types/index.d.ts                  the mod's session values ($.state): paneOpen, lookSet
 tests/                            plugin tests, run by `claude plugin test .` (*.test.ts and *.test.tsx)
 tools/                            look at a wallpaper without the app, and the checks; see tools/README.md
-tools/tests/                      Node tests, run by `node --test tools/tests/`
+tools/tests/                      Node tests, run by `node --test tools/tests/`; blackhole-kit.mjs is a helper, not a test file (`drive()` runs the shader frame by frame and changes the window, the prompt box, the values and the frame time between frames); blackhole-geometry and blackhole-stability are quick tests, blackhole-flash and blackhole-geometry-flash are the slow ones
 tools/out/                        what the tools write (git ignores it)
 docs/wordmark.svg                 the wordmark in README.md
 CHANGELOG.md, README.md           for the owner and visitors; update both when a wallpaper is added
@@ -48,7 +48,7 @@ PowerShell on Windows. In Git Bash the same commands work.
 |---|---|
 | `claude plugin test .` | Runs `tests/` against the mod through the app's own harness (`claude-code/testing`). |
 | `node --test tools/tests/` | Node tests of the tools, the shader under the stand-in, the still, the manifest. Quick; the slow flash run is left out. |
-| `$env:SLOW = '1'; node --test tools/tests/` | Adds the slow flash run of the black hole shader: 6 seconds of frames on two window sizes, 8 to 30 minutes. In Git Bash: `SLOW=1 node --test tools/tests/`. |
+| `$env:SLOW = '1'; node --test tools/tests/` | Adds the slow flash runs of the black hole shader: 6 seconds of frames on two window sizes (`blackhole-flash.test.mjs`) and the flash estimate while its geometry changes (`blackhole-geometry-flash.test.mjs`). Together they took about two and a half minutes on the owner's PC (2026-11-23). In Git Bash: `SLOW=1 node --test tools/tests/`. |
 | `claude plugin validate .` | The app's own check of manifest, hooks and shader. Prints each shader's cost or the line it refuses. Must pass. |
 | `node tools/sync-manifest.mjs` | Writes `userConfig` in `plugin.json` from the options the code lists. Run after adding a wallpaper or an option. |
 | `node tools/sync-manifest.mjs --check` | Says whether `plugin.json` is in step; exits 1 if not. |
@@ -182,6 +182,14 @@ Each rule has its reason. Break none of them without telling the owner.
 - [ ] **Nothing may blink.** No spot swings lighter and darker more than three times a second. Let slow things pick a character and fast things only change how brightly it is drawn. Keep quick change to a small area. Run the flash estimator and keep the worst area under a quarter of the app's limit (2,500 square points). The first ASCII black hole changed a third of its characters ten times a second and the app held it still after a while.
 - [ ] **Motion has to be seen to be believed.** Cut a time slice (step 10). A first version passed every test and did not visibly move.
 - [ ] **A wallpaper must not follow anything that moves while the owner types.** Only the prompt box's left and right edges may place it (its width and centre across), never its top or bottom: the box grows with every new line and would move and resize the picture with it. Two frames that differ only in the box's top and bottom must be the same picture.
+- [ ] **Nothing follows the prompt box's top or bottom.** The box grows while the owner types. The black hole sits from the window and the box's left and right alone: `W = (right - left) * size.x` (`0.6 * size.x` with no box, and a box under 80 points wide counts as none), centre across `(left + right) / 2 * size.x`, up `0.57 * size.y`, `R = values.size * min(clamp(0.16 * W, 48, 150), 0.18 * size.y)`.
+- [ ] **Take a change of geometry while dark.** Latch what the picture is drawn with; when the raw geometry differs by more than 0.4 points, fade out over 0.27 s (still drawn with the old one), stay dark while the inputs move, latch the new one after 0.17 s of stillness, fade in over 0.55 s. A change of pixel size cuts to dark at once. Working every cell out again on each frame of a change flashed at 39,124 against a limit of 2,500 (after the fix: 5 to 46).
+- [ ] **Start dark and fade in**, and treat empty or cleared state buffers as a start, so the first frame and a cleared buffer never show a half-worked picture.
+- [ ] **No per-frame random term decides what a cell shows.** Fix each cell's offset, give every switch a margin each way (a blank cell lights above one level and goes blank below a lower one), and hold a glyph at least half a second (1 s where bright, 1.8 s in calmer motion), so no dot turns more than three times a second.
+- [ ] **Check each colour lane for flicker, not only luminance.** Dim red dots hide in luminance.
+- [ ] **A number measured each frame is smoothed and held before it is drawn.** The frames-a-second digits move only when the rate has left them by 0.8.
+- [ ] **A table made once carries a mark** (the lens's fourth lane is 1). If it reads empty, draw nothing (alpha 0), never a wrong picture.
+- [ ] **Test the changes, not only the settled picture.** Drive the inputs between frames with `drive()` from `tools/tests/blackhole-kit.mjs`: the window, the prompt box, the values, the frame time.
 - [ ] **Fine characters vanish behind blurred panels.** At a blur of 8 nothing is left of 6 by 10 point characters; a blur of about 1 keeps them. Say so to the owner. Do not change their setting.
 - [ ] **Text in an SVG keeps to a grid only if each run's `textLength` is its character count less one, times the cell, plus one character's advance** (`still.ts`: `(chars.length - 1) * cellW + ADVANCE`), so the browser's own font does not shift the columns.
 - [ ] **Settings are plugin options and nothing else.** A wallpaper's own options carry its name (`<id><Key>`, title "Label: ..."). The pane shows only the current wallpaper's. A command for another wallpaper's option is refused. Never keep a setting in `$.state`; it holds only `paneOpen` and `lookSet`.
@@ -200,6 +208,7 @@ Report these as unverified every time:
 - How the wallpaper looks behind the real panels, at the owner's blur and clearness, and on a phone.
 - The settings pane and the plugin options screen as drawn.
 - Reduce Motion and the mobile surface.
+- What the app does to a shader's buffers at a resize, and whether it ever changes the pixel size while running (each such change is a short dark moment, by the black hole's rule).
 - Motion pacing and feel. A video made from stills is not the app.
 - Anything after a push: that `/plugin marketplace update cwallpaper` and `/reload-plugins` picked it up.
 
