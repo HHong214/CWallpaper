@@ -61,13 +61,17 @@ if (!look || look.kind !== 'buffer') throw new Error('the shader has no per-cell
 const cols = Math.ceil(WIDTH / CELL_W)
 const rowsAll = Math.ceil(HEIGHT / CELL_H)
 
-// Which frame: the streaks, clumps and infall move, so frames differ in how plainly they show the hole's
-// features. Of the frames every half second from FIRST to LAST seconds, the one whose band (the rows
-// that cross the dark middle) is most clearly brighter on its left half than on its right, by its
-// glyphs' density, among those with more lit above the hole than below.
+// Which frame: the arcs, the hot arc on the ring and the infall move, so frames differ in how plainly they
+// show the ring round the shadow. Of the frames every half second from FIRST to LAST seconds, the one with
+// the most lit characters in the upper half of the ring's annulus (0.9 R to 1.25 R about the centre).
 const FIRST = 3
 const LAST = 9
 const lit = ch => ch !== ' '
+/** The glyph a cell shows, from the look buffer's code (glyph, glyph before, fade, ground: see the shader). */
+function glyphOf(code) {
+  const fade = (Math.floor(code / 1024) % 32) / 31
+  return fade >= 0.5 ? code % 32 : Math.floor(code / 32) % 32
+}
 /** The picture's rows as characters, top first, read from the buffer as it is now. */
 function charRows() {
   const out = []
@@ -76,62 +80,26 @@ function charRows() {
     let s = ''
     for (let c = 0; c < cols; c++) {
       const code = look.data[(Math.min(row, look.h - 1) * look.w + Math.min(c, look.w - 1)) * 4]
-      const g = Math.floor(code / 1024) / 31 >= 0.5 ? code % 32 : Math.floor(code / 32) % 32
-      s += RAMP[g] ?? ' '
+      s += RAMP[glyphOf(code)] ?? ' '
     }
     out.push(s.trimEnd())
   }
   return out
 }
-/** How plainly a frame shows the band brighter on the left: its left half's density over its right's (0 if no band is read). */
+// the hole's centre and R on this window (no prompt box: the middle; W is 0.6 of the width)
+const R_STILL = SIZE * Math.min(Math.min(Math.max(0.16 * 0.6 * WIDTH, 48), 150), 0.18 * HEIGHT)
+/** How plainly a frame shows the ring: its lit characters in the upper half of the annulus. */
 function score(rows) {
-  const gapsOf = row => {
-    const g = []
-    let i = 0
-    while (i < row.length) {
-      if (row[i] === ' ') {
-        let j = i
-        while (j < row.length && row[j] === ' ') j++
-        if (i > 0 && j < row.length && j - i >= 4) g.push([i, j])
-        i = j
-      } else i++
+  let n = 0
+  rows.forEach((s, k) => {
+    const y = HEIGHT - (k + 0.5) * CELL_H
+    if (y <= HEIGHT / 2) return
+    for (let c = 0; c < s.length; c++) {
+      const d = Math.hypot((c + 0.5) * CELL_W - WIDTH / 2, y - HEIGHT / 2)
+      if (d >= 0.9 * R_STILL && d <= 1.25 * R_STILL && lit(s[c])) n++
     }
-    return g
-  }
-  const inGap = (g, c) => g.some(([a, b]) => c >= a && c < b)
-  const gaps = rows.map(gapsOf)
-  const mid = Math.floor(cols / 2) // the hole is in the middle: there is no prompt box
-  const runs = []
-  for (let i = 0; i < rows.length; ) {
-    if (inGap(gaps[i], mid)) {
-      let j = i
-      while (j < rows.length && inGap(gaps[j], mid)) j++
-      runs.push([i, j - 1])
-      i = j
-    } else i++
-  }
-  let pair = null
-  for (let k = 0; k + 1 < runs.length; k++) {
-    const [a, b] = [runs[k], runs[k + 1]]
-    if (b[0] - a[1] - 1 > 4 || b[0] - a[1] - 1 < 1) continue
-    const s = Math.min(a[1] - a[0], b[1] - b[0])
-    if (!pair || s > pair.s) pair = { a, b, s }
-  }
-  if (!pair) return 0
-  let left = 0
-  let right = 0
-  for (let i = pair.a[1] + 1; i < pair.b[0]; i++) {
-    for (let c = 0; c < rows[i].length; c++) {
-      const w = Math.max(0, RAMP.indexOf(rows[i][c]))
-      if (c < mid) left += w
-      else if (c > mid) right += w
-    }
-  }
-  let above = 0
-  let below = 0
-  for (let i = 0; i < pair.a[0]; i++) for (const ch of rows[i]) if (lit(ch)) above++
-  for (let i = pair.b[1] + 1; i < rows.length; i++) for (const ch of rows[i]) if (lit(ch)) below++
-  return above > below ? left / Math.max(right, 1) : 0
+  })
+  return n
 }
 let SECONDS = FIRST
 let bestScore = -1
@@ -165,11 +133,7 @@ for (let k = 0; k < rowsAll; k++) {
   let ink = ''
   for (let c = 0; c < cols; c++) {
     const i = (Math.min(row, look2.h - 1) * look2.w + Math.min(c, look2.w - 1)) * 4
-    const code = look2.data[i]
-    const cur = code % 32
-    const before = Math.floor(code / 32) % 32
-    const fade = Math.floor(code / 1024) / 31
-    const g = fade >= 0.5 ? cur : before
+    const g = glyphOf(look2.data[i])
     const ch = g >= 0 && g < RAMP.length ? RAMP[g] : ' '
     chars += ch
     if (ch === ' ') {

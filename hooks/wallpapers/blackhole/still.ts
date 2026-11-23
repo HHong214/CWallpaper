@@ -12,8 +12,9 @@ export type StillSettings = {
 }
 
 export const STILL_ALT =
-  'An ASCII-art black hole: a dark middle in a thin gold ring, the far side of its glowing disc bent over the top ' +
-  'and under it, the front of the disc a band across the middle, brighter on the left, and matter falling in.'
+  'An ASCII-art black hole seen from a little above its disc and tilted: a black middle in a thin gold ring, the ' +
+  'far side of the glowing disc arching over the top, its front a curved band across the lower half, brighter on ' +
+  'the left, and matter falling in.'
 
 const GROUND = '#060409'
 const FONT_SIZE = 9.6
