@@ -38,6 +38,7 @@
 //
 // Why these fail now: still.ts does not exist; it is imported inside each test.
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, it } from 'node:test'
@@ -101,9 +102,32 @@ describe('the still: a valid, small, still SVG', () => {
   })
 })
 
-// ---- the picture, read from its text rows -----------------------------------------------------------------------
+// ---- the picture, read from its text rows (contract v4: the still shows the new look) --------------------------------
+//
+// The still is the shader's own frame on a window of STILL_GRID.width by STILL_GRID.height points with no prompt box (read
+// from hooks/wallpapers/blackhole/still-data.ts, whose header says so), one <text> a row, top first, the first row being
+// grid row STILL_GRID.firstRow, a character a cell of 6 by 10 points, a blank a space. So the character in column c of the
+// i-th row is at x = (c + 0.5) * 6, y (up) = height - (firstRow + i + 0.5) * 10, and the contract's R, centre and W follow from
+// the window with no prompt box (centre at the window's middle, W = 0.6 of its width, R = size * min(clamp(0.16 W, 48, 150),
+// 0.18 height), with `size` as tools/make-still.mjs makes it, read from its source: `const SIZE = ...`). A character's light is
+// its place in the shader's glyph ramp (' .:;tSX%8#$@', 0 to 11) over 11: the still keeps the glyphs and the colours, and
+// a glyph's index is the closest to its light the text can give. Lit means any character but a blank.
+//   1. rolled: the principal axis of the light over the disc's box is 5 to 25 degrees off the horizontal.
+//   2. a front band with height (the wording of 2026-11-23): in the strip |u| <= 0.15 R, among the character places with v from
+//      -0.9 R to -0.1 R, the lit ones span at least 0.25 R in v and at least 30% of the places between the highest and the
+//      lowest lit one are lit.
+//   3. the far side arches over the top: the mean light in 1.05 R <= v <= 1.6 R, |u| <= 0.5 R is over 0.02.
+//   4. one side is bright: u < 0 over the disc's box carries more light than u > 0.
+//   8. a dark upper shadow: nothing lit in the circle of radius 0.35 R centred 0.4 R above the centre along v (a blank cannot
+//      show "darker than the ground", so for the still that is enough).
+//   5. a ring: of the character places in the upper half (above the centre) of the annulus 0.9 R to 1.25 R about the centre, at
+//      least 30% are lit (my number: the contract says only "lit characters in the upper half of the annulus").
+// These follow items 1 to 4 and 8 of look-contract.md in place of v1's "a dark middle, the band brighter on the left, light
+// above and below" (and of the ring check that went with the gap reading, which no longer holds for a tilted disc).
+// Today's still is the edge-on picture, so 1, 2 and 8 fail; 3 and 4 pass today (properties to keep).
+import { STILL_GRID } from '../../hooks/wallpapers/blackhole/still-data.ts'
 
-const RAMP = ' .:-=+*#%@'
+const GLYPHS = ' .:;tSX%8#$@'
 const decode = s =>
   s
     .replace(/&#(?:160|xa0);/gi, ' ')
@@ -114,120 +138,124 @@ const decode = s =>
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, '&')
     .replace(/ /g, ' ')
-function textRows(svg) {
-  return [...svg.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)].map(m => decode(m[1].replace(/<[^>]*>/g, '')))
-}
-const isLit = ch => ch !== ' ' && ch !== undefined
-const weight = ch => (isLit(ch) ? (RAMP.includes(ch) ? RAMP.indexOf(ch) : 5) : 0)
-/** Column ranges [a, b) of spaces on a row that have a lit character before and after. */
-function innerGaps(row) {
-  const gaps = []
-  let i = 0
-  while (i < row.length) {
-    if (row[i] === ' ') {
-      let j = i
-      while (j < row.length && row[j] === ' ') j++
-      if (i > 0 && j < row.length) gaps.push([i, j])
-      i = j
-    } else i++
-  }
-  return gaps
-}
-const inGap = (gaps, c) => gaps.some(([a, b]) => c >= a && c < b)
+const textRows = svg => [...svg.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)].map(m => decode(m[1].replace(/<[^>]*>/g, '')))
+const f3 = v => v.toFixed(3)
 
-describe('the still: the same picture as a frame of the shader, read from its text rows', () => {
+describe('the still: the new look, read from its text rows', () => {
   async function read() {
     const { svg } = await still()
     const rows = textRows(svg)
-    assert.ok(rows.length >= 15, `${rows.length} text rows: the picture is one <text> element a row, 15 rows at least`)
-    assert.ok(Math.max(...rows.map(r => r.length)) >= 30, 'the rows are under 30 columns wide')
-    const gaps = rows.map(r => innerGaps(r).filter(([a, b]) => b - a >= 4))
-    // the hole's columns: those that sit in a gap on the most rows; its middle is the widest run of the best ones
-    const width = Math.max(...rows.map(r => r.length))
-    const count = Array.from({ length: width }, (_, c) => gaps.reduce((n, g) => n + (inGap(g, c) ? 1 : 0), 0))
-    const best = Math.max(...count)
-    assert.ok(best >= 6, `no dark middle: no column is inside a gap of 4 or more spaces on more than ${best} rows`)
-    let bestRun = [0, 0]
-    for (let c = 0; c < width; ) {
-      if (count[c] >= 0.6 * best) {
-        let d = c
-        while (d < width && count[d] >= 0.6 * best) d++
-        if (d - c > bestRun[1] - bestRun[0]) bestRun = [c, d]
-        c = d
-      } else c++
+    assert.ok(rows.length >= 15, `${rows.length} text rows: one <text> element a row, 15 rows at least`)
+    const { width, height, cellW, cellH, firstRow } = STILL_GRID
+    const SIZE = Number(/const SIZE = ([\d.]+)/.exec(readFileSync(path.join(ROOT, 'tools', 'make-still.mjs'), 'utf8'))?.[1])
+    assert.ok(SIZE > 0, 'tools/make-still.mjs has no `const SIZE = ...`')
+    const W = 0.6 * width
+    const g = { W, cx: width / 2, cy: height / 2, R: SIZE * Math.min(Math.min(Math.max(0.16 * W, 48), 150), 0.18 * height) }
+    const cells = []
+    const litAt = new Set()
+    rows.forEach((row, i) => {
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] === ' ') continue
+        const k = GLYPHS.indexOf(row[c])
+        cells.push({ x: (c + 0.5) * cellW, y: height - (firstRow + i + 0.5) * cellH, w: (k < 0 ? 6 : k) / 11 })
+        litAt.add(c + ',' + (firstRow + i))
+      }
+    })
+    /** Every character place of the window, { x, y, lit }, y up. */
+    const places = []
+    for (let row = 0; row < height / cellH; row++) {
+      for (let c = 0; c < width / cellW; c++) places.push({ x: (c + 0.5) * cellW, y: height - (row + 0.5) * cellH, lit: litAt.has(c + ',' + row) })
     }
-    const middle = Math.floor((bestRun[0] + bestRun[1] - 1) / 2)
-    // runs of consecutive rows with the middle column in a gap; the hole is the pair of neighbouring runs (at most 4
-    // rows apart: the band between them) whose shorter run is the longest. Other gaps (between arcs of light) are not it.
-    const runs = []
-    for (let i = 0; i < rows.length; ) {
-      if (inGap(gaps[i], middle)) {
-        let j = i
-        while (j < rows.length && inGap(gaps[j], middle)) j++
-        runs.push([i, j - 1])
-        i = j
-      } else i++
-    }
-    let pair = null
-    for (let k = 0; k + 1 < runs.length; k++) {
-      const [a, b] = [runs[k], runs[k + 1]]
-      if (b[0] - a[1] - 1 > 4) continue
-      const score = Math.min(a[1] - a[0] + 1, b[1] - b[0] + 1)
-      if (!pair || score > pair.score) pair = { a, b, score }
-    }
-    assert.ok(pair, 'no dark middle: no two runs of rows with a gap at the middle column sit either side of a band of 4 rows or fewer')
-    const holeRows = []
-    for (const [from, to] of [pair.a, pair.b]) for (let i = from; i <= to; i++) holeRows.push(i)
-    const bandRows = []
-    for (let i = pair.a[1] + 1; i < pair.b[0]; i++) bandRows.push(i)
-    return { rows, gaps, middle, holeRows, top: pair.a[0], bottom: pair.b[1], bandRows, above: pair.a, below: pair.b }
+    return { g, cells, places }
   }
-  it('has a dark middle: a gap in the rows above the band and in the rows below it, with the band lit between', async () => {
-    const { bandRows, middle, rows, above: a, below: b } = await read()
-    assert.ok(bandRows.length >= 1, 'no band crosses the dark middle')
-    const above = a[1] - a[0] + 1
-    const below = b[1] - b[0] + 1
-    assert.ok(above >= 3, `${above} rows of dark middle above the band (3 at least)`)
-    assert.ok(below >= 3, `${below} rows of dark middle below the band (3 at least)`)
-    for (const i of bandRows) assert.ok(isLit(rows[i][middle]), `the band's row ${i} is not lit through the middle column ${middle}`)
-  })
-  it('has lit rows above the hole and below it, more above than below', async () => {
-    const { rows, top, bottom } = await read()
-    const litIn = (from, to) => {
-      let n = 0
-      for (let i = from; i < to; i++) for (const ch of rows[i]) if (isLit(ch)) n++
-      return n
+  const inBox = (g, c) => Math.abs(c.x - g.cx) <= 0.575 * g.W && Math.abs(c.y - g.cy) <= 0.35 * g.W
+  /** The roll in degrees: the principal axis of the light-weighted second moments over the disc's box. */
+  function roll(g, cells) {
+    let sw = 0
+    let sx = 0
+    let sy = 0
+    const inside = cells.filter(c => inBox(g, c))
+    for (const c of inside) {
+      sw += c.w
+      sx += c.w * c.x
+      sy += c.w * c.y
     }
-    const above = litIn(0, top)
-    const below = litIn(bottom + 1, rows.length)
-    assert.ok(above > 0, 'nothing is lit above the dark middle')
-    assert.ok(below > 0, 'nothing is lit below the dark middle')
-    assert.ok(above > below, `lit characters above ${above}, below ${below}`)
-  })
-  it('has a ring: lit characters on both sides of the dark middle on its rows, and a lit row across its top and bottom', async () => {
-    const { rows, holeRows, gaps, middle } = await read()
-    for (const i of holeRows) {
-      const [a, b] = gaps[i].find(([x, y]) => middle >= x && middle < y)
-      assert.ok(rows[i].slice(0, a).trim() !== '' && rows[i].slice(b).trim() !== '', `row ${i}: the gap has nothing lit on both sides`)
+    if (!sw) return NaN
+    const mx = sx / sw
+    const my = sy / sw
+    let cxx = 0
+    let cyy = 0
+    let cxy = 0
+    for (const c of inside) {
+      cxx += c.w * (c.x - mx) ** 2
+      cyy += c.w * (c.y - my) ** 2
+      cxy += c.w * (c.x - mx) * (c.y - my)
     }
-    // the row just above the first hole row and the row just below the last are lit across the hole's middle
-    const first = holeRows[0]
-    const last = holeRows[holeRows.length - 1]
-    assert.ok(first > 0 && isLit(rows[first - 1][middle]), 'the ring does not close over the top of the dark middle')
-    assert.ok(last + 1 < rows.length && isLit(rows[last + 1][middle]), 'the ring does not close under the dark middle')
+    return (0.5 * Math.atan2(2 * cxy, cxx - cyy) * 180) / Math.PI
+  }
+  const uv = (g, phi, c) => {
+    const p = (phi * Math.PI) / 180
+    const dx = c.x - g.cx
+    const dy = c.y - g.cy
+    return { u: dx * Math.cos(p) + dy * Math.sin(p), v: -dx * Math.sin(p) + dy * Math.cos(p) }
+  }
+  it('1. is rolled: the principal axis of its light is 5 to 25 degrees off the horizontal', async () => {
+    const { g, cells } = await read()
+    const phi = roll(g, cells)
+    assert.ok(Math.abs(phi) >= 5 && Math.abs(phi) <= 25, `the still's roll is ${f3(phi)} degrees (needs 5 to 25 either way)`)
   })
-  it('has a band brighter on its left half than on its right', async () => {
-    const { rows, bandRows, middle } = await read()
-    assert.ok(bandRows.length >= 1, 'no band')
+  it('2. has a front band with height in front of the lower shadow: in the strip, the lit places between v -0.9 R and -0.1 R span 0.25 R or more and fill 30% or more of that span', async () => {
+    const { g, cells, places } = await read()
+    const phi = roll(g, cells)
+    const strip = places.map(c => ({ v: uv(g, phi, c).v, u: uv(g, phi, c).u, lit: c.lit })).filter(c => Math.abs(c.u) <= 0.15 * g.R && c.v >= -0.9 * g.R && c.v <= -0.1 * g.R)
+    const litV = strip.filter(c => c.lit).map(c => c.v)
+    const lo = Math.min(...litV)
+    const hi = Math.max(...litV)
+    const between = strip.filter(c => c.v >= lo && c.v <= hi)
+    const fraction = between.filter(c => c.lit).length / Math.max(1, between.length)
+    const msg = `roll ${f3(phi)}: ${litV.length} lit places of ${strip.length} in the strip, span ${litV.length ? f3((hi - lo) / g.R) : '0.000'} R (needs 0.25), ${(100 * fraction).toFixed(0)}% of the places between the highest and lowest are lit (needs 30%)`
+    assert.ok(litV.length > 0, msg)
+    assert.ok((hi - lo) / g.R >= 0.25 && fraction >= 0.3, msg)
+  })
+  it('3. has the far side arching over the top: the mean light in 1.05 R to 1.6 R above, within 0.5 R across, is over 0.02', async () => {
+    const { g, cells } = await read()
+    const phi = roll(g, cells)
+    // the mean over every character place in the region (a blank is 0); the region's area is counted in cells of 6 by 10 points
+    const area = (0.5 * g.R * 2 * 0.55 * g.R) / (6 * 10)
+    const sum = cells.reduce((a, c) => {
+      const { u, v } = uv(g, phi, c)
+      return a + (Math.abs(u) <= 0.5 * g.R && v >= 1.05 * g.R && v <= 1.6 * g.R ? c.w : 0)
+    }, 0)
+    assert.ok(sum / area > 0.02, `the mean light there is ${f3(sum / area)} (needs over 0.02)`)
+  })
+  it('4. has one bright side: u < 0 carries more light than u > 0 over the disc box', async () => {
+    const { g, cells } = await read()
+    const phi = roll(g, cells)
     let left = 0
     let right = 0
-    for (const i of bandRows) {
-      for (let c = 0; c < rows[i].length; c++) {
-        if (c < middle) left += weight(rows[i][c])
-        else if (c > middle) right += weight(rows[i][c])
-      }
+    for (const c of cells) {
+      if (!inBox(g, c)) continue
+      if (uv(g, phi, c).u < 0) left += c.w
+      else right += c.w
     }
-    assert.ok(left > 0)
-    assert.ok(left > right * 1.05, `band weight: left ${left}, right ${right}`)
+    assert.ok(left > right, `light on the u < 0 side ${f3(left)}, on the u > 0 side ${f3(right)}`)
+  })
+  it('8. has a dark upper shadow: nothing is lit in the circle of radius 0.35 R centred 0.4 R above the centre along v', async () => {
+    const { g, cells } = await read()
+    const phi = roll(g, cells)
+    const p = (phi * Math.PI) / 180
+    const ccx = g.cx - 0.4 * g.R * Math.sin(p)
+    const ccy = g.cy + 0.4 * g.R * Math.cos(p)
+    const lit = cells.filter(c => Math.hypot(c.x - ccx, c.y - ccy) <= 0.35 * g.R)
+    assert.equal(lit.length, 0, `${lit.length} lit characters in the upper shadow (the circle holds about ${Math.round((Math.PI * (0.35 * g.R) ** 2) / 60)} cells)`)
+  })
+  it('5. has a ring: at least 25% of the character places in the upper half of the annulus 0.9 R to 1.25 R are lit', async () => {
+    const { g, places } = await read()
+    const ring = places.filter(c => {
+      const d = Math.hypot(c.x - g.cx, c.y - g.cy)
+      return c.y > g.cy && d >= 0.9 * g.R && d <= 1.25 * g.R
+    })
+    const lit = ring.filter(c => c.lit).length
+    assert.ok(lit / ring.length >= 0.25, `${lit} of ${ring.length} places in the upper half of the annulus are lit (${((100 * lit) / ring.length).toFixed(0)}%, needs 25%)`)
   })
 })

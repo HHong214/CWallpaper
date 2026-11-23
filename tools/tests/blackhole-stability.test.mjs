@@ -15,8 +15,15 @@
 //   3. The frames-a-second digits hold still when the rate hovers. `fps` 1 on 480x320, the frame time alternating
 //      between 1/29 and 1/30 second (the Renderer's `fps` is set to 29 and 30 on alternate frames; the shader reads
 //      only dt) so the measured rate sits at 29.5, between 29.4 and 29.6: after 4 seconds (120 frames, to let it settle)
-//      the readout's box (96 points wide, 24 high, bottom left) is read on each of the next 5 seconds' frames and
-//      changes at most twice in all (a frame whose box differs from the one before it counts as a change).
+//      the readout's box (contract v4: 96 points wide, 24 high, its left edge the chat column's, cx - W / 2, its top
+//      96 points below the top of the window, so x from cx - W / 2 to cx - W / 2 + 96 and y from size.y - 120 to
+//      size.y - 96; on this window x 96 to 192, y 200 to 224) is read on each of the next 5 seconds' frames and
+//      changes at most twice in all (a frame whose box differs from the one before it counts as a change), and holds
+//      100 or more lit samples on the last frame (the readout is there: the box is cleared of the picture, so only it lights).
+//   3b. The readout stays lit through a fade (contract v4): 600x378, the prompt box jumping from left 0.1, right 0.7 to
+//      left 0.35, right 0.95 at frame 60, the picture fades and moves. The run is made at fps 1 and at fps 0; the samples that
+//      differ between them are the readout (the box is kept clear of the picture, so nothing else differs). On every frame
+//      from 60 to 105 at least 150 of them lie in the rows y from size.y - 132 to size.y - 84.
 //
 // WHAT THEY ASSUME ABOUT tools/render.mjs: nothing new is needed (see blackhole-kit.mjs): the frame time is changed by
 // writing `r.fps` between frames.
@@ -121,8 +128,12 @@ describe('a prompt box too narrow to be one counts as none', () => {
 describe('the frames-a-second digits hold still when the rate hovers', () => {
   it('with the measured rate at 29.5 for 5 seconds the readout changes at most twice', { timeout: 120000 }, async () => {
     const points = [480, 320]
+    const gb = geometry(points, PROMPT)
+    const x0 = Math.round(gb.cx - gb.W / 2)
+    const y0 = points[1] - 120
     let prev = null
     let changes = 0
+    let lit = 0
     const bad = await drive({
       res: points,
       points,
@@ -133,9 +144,11 @@ describe('the frames-a-second digits hold still when the rate hovers', () => {
       tweak: (f, api) => api.setFps(f % 2 === 0 ? 29 : 30),
       onFrame: (f, pic, r) => {
         const L = r.luminance(pic)
-        // the readout's box: 96 points wide, 24 high, bottom left (y up in the picture, rows top first in L)
+        // the readout's box: 96 points wide, 24 high, x from cx - W / 2, y from size.y - 120 (y up in the picture, rows top first in L)
         const box = new Float32Array(96 * 24)
-        for (let y = 0; y < 24; y++) for (let x = 0; x < 96; x++) box[y * 96 + x] = excess(L[(r.h - 1 - y) * r.w + x])
+        for (let y = 0; y < 24; y++) for (let x = 0; x < 96; x++) box[y * 96 + x] = excess(L[(r.h - 1 - (y0 + y)) * r.w + x0 + x])
+        lit = 0
+        for (const v of box) if (v > 0.01) lit++
         if (prev) {
           let differs = false
           for (let i = 0; i < box.length; i++) if (Math.abs(box[i] - prev[i]) > 1e-6) differs = true
@@ -145,7 +158,46 @@ describe('the frames-a-second digits hold still when the rate hovers', () => {
       },
     })
     assert.equal(bad, 0)
+    assert.ok(lit >= 100, `the box (x ${x0} to ${x0 + 96}, y ${y0} to ${y0 + 24}) holds ${lit} lit samples on the last frame (needs 100): the readout is not there`)
     assert.ok(changes <= 2, `the readout's box changed on ${changes} of 149 frames while the rate sat at 29.5 (limit 2)`)
+  })
+  it('the readout stays lit through a fade: on every frame from the jump of the prompt box to 1.5 seconds after it, 150 or more samples of it lie in the rows 84 to 132 points below the top', { timeout: 120000 }, async () => {
+    const points = [600, 378]
+    const T0 = 60
+    const counts = []
+    const pics = {}
+    for (const fps of [1, 0]) {
+      pics[fps] = {}
+      const bad = await drive({
+        res: points,
+        points,
+        composer: [0.1, 0.05, 0.7, 0.15],
+        values: { fps },
+        frames: T0 + 46,
+        draw: f => f >= T0,
+        tweak: (f, api) => {
+          if (f === T0) api.setComposer([0.35, 0.05, 0.95, 0.15])
+        },
+        onFrame: (f, pic) => {
+          pics[fps][f] = pic
+        },
+      })
+      assert.equal(bad, 0)
+    }
+    for (let f = T0; f <= T0 + 45; f++) {
+      let n = 0
+      for (let y = points[1] - 132; y < points[1] - 84; y++) {
+        for (let x = 0; x < points[0]; x++) {
+          const i = (y * points[0] + x) * 4
+          let d = 0
+          for (let k = 0; k < 4; k++) d = Math.max(d, Math.abs(pics[1][f][i + k] - pics[0][f][i + k]))
+          if (d > 0.05) n++
+        }
+      }
+      counts.push(n)
+    }
+    const low = Math.min(...counts)
+    assert.ok(low >= 150, `the readout's lowest count in those rows is ${low} samples (needs 150), on frame ${T0 + counts.indexOf(low)}; the counts are ${counts.join(' ')}`)
   })
 })
 

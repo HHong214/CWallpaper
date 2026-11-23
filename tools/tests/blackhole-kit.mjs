@@ -65,53 +65,98 @@ export function discMean(lum, w, h, g) {
   return n ? sum / n : 0
 }
 
-/** The shadow's centre and R off a frame's luminance (as blackhole.test.mjs reads it: chords at 0.45 R, heights at 0.4 R). Null when the middle is not dark at the expected centre. Needs pitch 1. */
+/**
+ * The shadow's centre and R off a frame's luminance, read from the UPPER half of the circle only (the tilted look's front band
+ * crosses the lower half). Needs pitch 1. The picture is made of character cells (6 by 10 points, on a fixed grid from the
+ * window's corner) whose dots light only part of a cell, so the shadow's edge is read in whole cells: a cell is dark when the
+ * mean excess luminance over its block is under 0.01 (a cell counts as lit by where its centre is, so this puts the edge at
+ * the circle, not up to a cell inside it). Four chords, the rows of cells at 0.35, 0.5, 0.65 and 0.8 R above the expected
+ * centre, each the run of dark cells walked out from the expected centre column; the top edge, the run of dark cells up that
+ * column; and a circle fitted (least squares, algebraic) through the chords' ends and the top edge. The closed form from two
+ * chords at heights y1, y2 with half-lengths L1, L2, cy = (y1 + y2) / 2 - (L1^2 - L2^2) / (2 (y2 - y1)) and
+ * R = sqrt(L1^2 + (y1 - cy)^2), is the same fit with two chords; more chords keep one cell's error from moving the centre.
+ * Gives { cx, cy, R }; null when the middle is not dark at the expected centre.
+ */
 export function measureShadow(L, w, h, g) {
-  const T = 0.03
-  const at = (x, y) => excess(L[(h - 1 - y) * w + x])
-  const band = 0.06 * g.R
-  const chordAt = dy => {
-    const y0 = Math.max(0, Math.round(g.cy + dy * g.R - band))
-    const y1 = Math.min(h - 1, Math.round(g.cy + dy * g.R + band))
-    const prof = x => {
-      let s = 0
-      for (let y = y0; y <= y1; y++) s += at(x, y)
-      return s / (y1 - y0 + 1)
+  const CW = 6
+  const CH = 10
+  const T = 0.01
+  const cellDark = (c, r) => {
+    let s = 0
+    let n = 0
+    for (let y = r * CH; y < Math.min(h, (r + 1) * CH); y++) {
+      for (let x = c * CW; x < Math.min(w, (c + 1) * CW); x++) {
+        s += excess(L[(h - 1 - y) * w + x])
+        n++
+      }
     }
-    let a = Math.round(g.cx)
-    let b = a
-    if (prof(a) >= T) return null
-    while (a - 1 >= 0 && prof(a - 1) < T) a--
-    while (b + 1 < w && prof(b + 1) < T) b++
-    return { lo: a, hi: b + 1 }
+    return n > 0 && s / n < T
   }
-  const heightAt = dx => {
-    const x0 = Math.max(0, Math.round(g.cx + dx * g.R - band))
-    const x1 = Math.min(w - 1, Math.round(g.cx + dx * g.R + band))
-    const prof = y => {
-      let s = 0
-      for (let x = x0; x <= x1; x++) s += at(x, y)
-      return s / (x1 - x0 + 1)
+  const cols = Math.ceil(w / CW)
+  const rows = Math.ceil(h / CH)
+  const c0 = Math.min(cols - 1, Math.floor(g.cx / CW))
+  const pts = []
+  for (const k of [0.35, 0.5, 0.65, 0.8]) {
+    const r = Math.floor((g.cy + k * g.R) / CH)
+    if (r < 0 || r >= rows || !cellDark(c0, r)) return null
+    let a = c0
+    let b = c0
+    while (a - 1 >= 0 && cellDark(a - 1, r)) a--
+    while (b + 1 < cols && cellDark(b + 1, r)) b++
+    const y = (r + 0.5) * CH
+    pts.push([a * CW, y], [(b + 1) * CW, y])
+  }
+  const mid = pts.reduce((s, p) => s + p[0], 0) / pts.length
+  // the top edge: up the column of cells through the chords' middle
+  const cm = Math.min(cols - 1, Math.max(0, Math.floor(mid / CW)))
+  let top = Math.floor((g.cy + 0.8 * g.R) / CH)
+  if (top >= rows || !cellDark(cm, top)) return null
+  while (top + 1 < rows && cellDark(cm, top + 1)) top++
+  pts.push([mid, (top + 1) * CH])
+  // circle fit: minimise the sum of (x^2 + y^2 + D x + E y + F)^2 about the points' mean
+  const mx = pts.reduce((s, p) => s + p[0], 0) / pts.length
+  const my = pts.reduce((s, p) => s + p[1], 0) / pts.length
+  let sxx = 0
+  let sxy = 0
+  let syy = 0
+  let sx = 0
+  let sy = 0
+  let sxz = 0
+  let syz = 0
+  let sz = 0
+  for (const [px, py] of pts) {
+    const x = px - mx
+    const y = py - my
+    const z = x * x + y * y
+    sxx += x * x
+    sxy += x * y
+    syy += y * y
+    sx += x
+    sy += y
+    sxz += x * z
+    syz += y * z
+    sz += z
+  }
+  const n = pts.length
+  // normal equations for (D, E, F): [sxx sxy sx; sxy syy sy; sx sy n] (D, E, F) = -(sxz, syz, sz)
+  const M = [[sxx, sxy, sx, -sxz], [sxy, syy, sy, -syz], [sx, sy, n, -sz]]
+  for (let c = 0; c < 3; c++) {
+    let p = c
+    for (let r = c + 1; r < 3; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r
+    ;[M[c], M[p]] = [M[p], M[c]]
+    if (Math.abs(M[c][c]) < 1e-9) return null
+    for (let r = 0; r < 3; r++) {
+      if (r === c) continue
+      const f = M[r][c] / M[c][c]
+      for (let k = c; k < 4; k++) M[r][k] -= f * M[c][k]
     }
-    let up = Math.floor(g.cy + 0.5 * g.R)
-    let down = Math.floor(g.cy - 0.5 * g.R)
-    if (prof(up) >= T || prof(down) >= T) return null
-    while (up + 1 < h && prof(up + 1) < T) up++
-    while (down - 1 >= 0 && prof(down - 1) < T) down--
-    return { lo: down, hi: up + 1 }
   }
-  const chords = [chordAt(0.45), chordAt(-0.45)]
-  const heights = [heightAt(0.4), heightAt(-0.4)]
-  if (chords.includes(null) || heights.includes(null)) return null
-  const mean = xs => xs.reduce((s, v) => s + v, 0) / xs.length
-  return {
-    cx: mean(chords.map(c => (c.lo + c.hi) / 2)),
-    cy: mean(heights.map(c => (c.lo + c.hi) / 2)),
-    R:
-      (mean(chords.map(c => (c.hi - c.lo) / 2)) / Math.sqrt(1 - 0.45 * 0.45) +
-        mean(heights.map(c => (c.hi - c.lo) / 2)) / Math.sqrt(1 - 0.4 * 0.4)) /
-      2,
-  }
+  const D = M[0][3] / M[0][0]
+  const E = M[1][3] / M[1][1]
+  const F = M[2][3] / M[2][2]
+  const R2 = (D * D + E * E) / 4 - F
+  if (!(R2 > 0)) return null
+  return { cx: mx - D / 2, cy: my - E / 2, R: Math.sqrt(R2) }
 }
 
 /** Is a measured shadow at the formulas' place: centre within 8 points, R within the larger of 15% and 8 points? Returns '' or why not. */
@@ -121,6 +166,15 @@ export function placeProblem(m, g) {
   if (Math.abs(m.cy - g.cy) > 8) return `centre up ${m.cy.toFixed(1)}, formula ${g.cy.toFixed(1)}`
   if (Math.abs(m.R - g.R) > Math.max(0.15 * g.R, 8)) return `R ${m.R.toFixed(1)}, formula ${g.R.toFixed(1)}`
   return ''
+}
+
+/** The renderer's buffers by name: lens (the `once` buffer), state (4 by 1 texels), geo, flow and look (the buffers drawn at a texel a cell, in pass order). Needs frame 0 to have run. */
+export function findBuffers(r) {
+  const bs = r.shader.passes.filter(b => b.kind === 'buffer' && b.data)
+  const cells = bs.filter(b => b.options.scale !== undefined)
+  const found = { lens: bs.find(b => b.once), state: bs.find(b => b.w === 4 && b.h === 1), geo: cells[0], flow: cells[1], look: cells[2] }
+  for (const k of Object.keys(found)) if (!found[k]) throw new Error(`blackhole-kit: no ${k} buffer found in the shader's passes`)
+  return found
 }
 
 /**
@@ -153,16 +207,7 @@ export async function drive({ res, points = res, composer = PROMPT, values = {},
     // contents, say at a resize). `buffers()` finds them in the shader's pass list once frame 0 has run:
     // lens (the `once` buffer), state (4 by 1 texels) and geo (the first buffer drawn at a texel a cell).
     // `snapshot` copies what a buffer holds, `clearBuffer` zeroes it (what the next frame reads), `restoreBuffer` puts a copy back.
-    buffers: () => {
-      const bs = r.shader.passes.filter(b => b.kind === 'buffer' && b.data)
-      const found = {
-        lens: bs.find(b => b.once),
-        state: bs.find(b => b.w === 4 && b.h === 1),
-        geo: bs.find(b => b.options.scale !== undefined),
-      }
-      for (const k of Object.keys(found)) if (!found[k]) throw new Error(`blackhole-kit: no ${k} buffer found in the shader's passes`)
-      return found
-    },
+    buffers: () => findBuffers(r),
     snapshot: b => new Float32Array(b.data),
     clearBuffer: b => {
       b.data.fill(0)
@@ -185,4 +230,162 @@ export function lane(pic, k) {
   const out = new Float32Array(pic.length / 4)
   for (let i = 0; i < out.length; i++) out[i] = pic[i * 4 + k] + (GROUND[k] / 255) * (1 - pic[i * 4 + 3])
   return out
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Contract v4 (the look): measuring a rendered frame. `lum` is the tool's luminance, top row first; one pixel to the
+// point (res = points); (x, y) below are in points, y up, a sample's centre at (i + 0.5, j + 0.5).
+
+/** The luminance of the sample at column i, row j counted from the bottom. */
+export const lumAt = (lum, w, h, i, j) => lum[(h - 1 - j) * w + i]
+
+/** Calls fn(i, j, x, y, value) for every sample whose centre is in the disc's box (|x - cx| <= 0.575 W, |y - cy| <= 0.35 W). */
+export function eachInDiscBox(lum, w, h, g, fn) {
+  const x0 = Math.max(0, Math.floor(g.cx - 0.575 * g.W))
+  const x1 = Math.min(w - 1, Math.ceil(g.cx + 0.575 * g.W))
+  const y0 = Math.max(0, Math.floor(g.cy - 0.35 * g.W))
+  const y1 = Math.min(h - 1, Math.ceil(g.cy + 0.35 * g.W))
+  for (let j = y0; j <= y1; j++) for (let i = x0; i <= x1; i++) fn(i, j, i + 0.5, j + 0.5, lum[(h - 1 - j) * w + i])
+}
+
+/**
+ * The roll: the angle (degrees, counter-clockwise from the horizontal, y up, in (-90, 90]) of the principal axis of the
+ * luminance above the ground over the disc's box: the weights are the excess luminance, the axis is that of the
+ * second moments about the weighted centroid.
+ */
+export function rollDegrees(lum, w, h, g) {
+  let sw = 0
+  let sx = 0
+  let sy = 0
+  eachInDiscBox(lum, w, h, g, (_i, _j, x, y, v) => {
+    const e = excess(v)
+    sw += e
+    sx += e * x
+    sy += e * y
+  })
+  if (sw <= 0) return NaN
+  const mx = sx / sw
+  const my = sy / sw
+  let cxx = 0
+  let cyy = 0
+  let cxy = 0
+  eachInDiscBox(lum, w, h, g, (_i, _j, x, y, v) => {
+    const e = excess(v)
+    cxx += e * (x - mx) ** 2
+    cyy += e * (y - my) ** 2
+    cxy += e * (x - mx) * (y - my)
+  })
+  return (0.5 * Math.atan2(2 * cxy, cxx - cyy) * 180) / Math.PI
+}
+
+/** u along the long axis (rolled by phi degrees), v across it, v up the window, about the centre. */
+export function toUV(x, y, g, phiDeg) {
+  const p = (phiDeg * Math.PI) / 180
+  const dx = x - g.cx
+  const dy = y - g.cy
+  return { u: dx * Math.cos(p) + dy * Math.sin(p), v: -dx * Math.sin(p) + dy * Math.cos(p) }
+}
+
+/**
+ * Item 2 (reworded 2026-11-23): the front band. In the strip |u| <= 0.15 R, among the samples with v between -0.9 R and
+ * -0.1 R, the lit ones (excess luminance over 0.03) span (highest v minus lowest) at least 0.25 R, and at least 30% of the
+ * samples between the highest and the lowest lit one are lit. Gives { n (lit samples), span (R), fraction (lit among the
+ * samples between the highest and lowest lit one) }.
+ */
+export function frontBand(lum, w, h, g, phiDeg) {
+  const samples = []
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      const { u, v } = toUV(i + 0.5, j + 0.5, g, phiDeg)
+      if (Math.abs(u) > 0.15 * g.R || v > -0.1 * g.R || v < -0.9 * g.R) continue
+      samples.push([v, excess(lum[(h - 1 - j) * w + i]) > 0.03])
+    }
+  }
+  let lo = Infinity
+  let hi = -Infinity
+  let n = 0
+  for (const [v, lit] of samples) {
+    if (!lit) continue
+    n++
+    lo = Math.min(lo, v)
+    hi = Math.max(hi, v)
+  }
+  if (!n) return { n: 0, span: 0, fraction: 0 }
+  let between = 0
+  let litBetween = 0
+  for (const [v, lit] of samples) {
+    if (v < lo || v > hi) continue
+    between++
+    if (lit) litBetween++
+  }
+  return { n, span: (hi - lo) / g.R, fraction: litBetween / between }
+}
+
+
+/** Mean excess luminance over the samples whose (u, v) satisfy test(u, v) (units of R). */
+export function meanInUV(lum, w, h, g, phiDeg, test) {
+  let s = 0
+  let n = 0
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      const { u, v } = toUV(i + 0.5, j + 0.5, g, phiDeg)
+      if (test(u / g.R, v / g.R)) {
+        s += excess(lum[(h - 1 - j) * w + i])
+        n++
+      }
+    }
+  }
+  return { mean: n ? s / n : 0, n }
+}
+
+/** Item 4: the means of the disc's box for u < 0 and u > 0. */
+export function sideMeans(lum, w, h, g, phiDeg) {
+  let l = 0
+  let nl = 0
+  let r = 0
+  let nr = 0
+  eachInDiscBox(lum, w, h, g, (_i, _j, x, y, v) => {
+    const { u } = toUV(x, y, g, phiDeg)
+    if (u < 0) {
+      l += excess(v)
+      nl++
+    } else {
+      r += excess(v)
+      nr++
+    }
+  })
+  return { left: nl ? l / nl : 0, right: nr ? r / nr : 0 }
+}
+
+/** Item 8: the mean of colour lane `k` (0 red, 2 blue) of the picture over the circle of radius 0.35 R centred 0.4 R above the centre along v. */
+export function coreLane(pic, w, h, g, phiDeg, k) {
+  const p = (phiDeg * Math.PI) / 180
+  const ccx = g.cx - 0.4 * g.R * Math.sin(p)
+  const ccy = g.cy + 0.4 * g.R * Math.cos(p)
+  const L = lane(pic, k) // y up, row 0 at the bottom
+  let s = 0
+  let n = 0
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      if (Math.hypot(i + 0.5 - ccx, j + 0.5 - ccy) <= 0.35 * g.R) {
+        s += L[j * w + i]
+        n++
+      }
+    }
+  }
+  return n ? s / n : NaN
+}
+
+/** Item 9: the median distance from the centre (in R) of the brightest 0.5% of the samples. */
+export function brightestMedian(lum, w, h, g) {
+  const sorted = Float32Array.from(lum).sort()
+  const thr = sorted[Math.max(0, Math.ceil(sorted.length * 0.995) - 1)]
+  const d = []
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      if (lum[(h - 1 - j) * w + i] >= thr) d.push(Math.hypot(i + 0.5 - g.cx, j + 0.5 - g.cy) / g.R)
+    }
+  }
+  d.sort((a, b) => a - b)
+  return { median: d[Math.floor(d.length / 2)], count: d.length }
 }
