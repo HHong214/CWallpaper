@@ -1,0 +1,2 @@
+# Keep the line endings the files have (CRLF); git must not convert them.
+* -text
