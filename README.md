@@ -9,7 +9,7 @@ Wallpapers are drawn by code, so each one is made here, by an agent that follows
 | Name | What it is | How it is drawn |
 |---|---|---|
 | `kiki` | Pixel art of a young witch and her black cat on a broom, flying toward a seaside city. It follows your clock from day to sunset to night. | An SVG the app animates itself |
-| `blackhole` | An ASCII black hole: a gold ring, its disc bent over and under it, matter falling in. Fine characters, light bent by the hole. | A GPU shader over a still SVG |
+| `blackhole` | An ASCII black hole seen from a little above its disc and rolled a little: a gold ring, the disc arching over the top and curving across the front, a black middle. The disc turns, a bright arc travels round the ring and matter streams in. Fine characters, light bent by the hole. | A GPU shader over a still SVG |
 
 With motion off, under Reduce Motion, and on mobile, the black hole shows its still picture.
 
@@ -41,7 +41,7 @@ The plugin has no version number, so every pushed commit is an update. In the ap
 | `/cwallpaper blur <n>` | Panels: blur | 0 to 40 |
 | `/cwallpaper dim <n>` | Scene: dim | 0 to 80 |
 | `/cwallpaper colors on\|off` | App colours follow the wallpaper | on or off |
-| `/cwallpaper fps on\|off` | Show FPS (a GPU wallpaper only) | on or off |
+| `/cwallpaper fps on\|off` | Show FPS: the frame rate, drawn larger at the top left of the chat (a GPU wallpaper only) | on or off |
 | `/cwallpaper time <word>` | Kiki: time of day | `auto`, `day`, `sunset` or `night` |
 | `/cwallpaper spinner on\|off` | Kiki: cat spinner | on or off |
 | `/cwallpaper size <word>` | Black hole: size | `small`, `medium` or `large` |
