@@ -289,14 +289,15 @@ test('the help names blackhole, its size and its calm, and still names none of t
 
 // ------------------------------------------------ its own options
 
-for (const [text, field, value] of [
-  ['size small', 'blackholeSize', 'small'],
-  ['size medium', 'blackholeSize', 'medium'],
-  ['size large', 'blackholeSize', 'large'],
-  ['calm on', 'blackholeCalm', true],
-  ['calm off', 'blackholeCalm', false],
+// Each is a real change from the options it starts from (a command that asks for what already is writes nothing).
+for (const [text, field, value, start] of [
+  ['size small', 'blackholeSize', 'small', {}],
+  ['size medium', 'blackholeSize', 'medium', { blackholeSize: 'large' }],
+  ['size large', 'blackholeSize', 'large', {}],
+  ['calm on', 'blackholeCalm', true, {}],
+  ['calm off', 'blackholeCalm', false, { blackholeCalm: true }],
 ] as const) {
-  test(`/wallpaper ${text} writes the option ${field} while the black hole is on`, HOLE, async ($, on) => {
+  test(`/wallpaper ${text} writes the option ${field} while the black hole is on`, { options: { wallpaper: 'blackhole', ...start } as never }, async ($, on) => {
     const { written } = await begin($, on)
     const said = await $.command.run(wallpaper(text))
     expect(written).toEqual([{ field, value }])

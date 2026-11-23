@@ -234,12 +234,16 @@ for (const name of ['picture', 'video', 'my-picture', 'my-video']) {
 
 // ------------------------------------------------ what `/wallpaper` writes
 
-/** Commands that write one option through `$.config.set`, and what they write; the wallpaper is Kiki and on. */
-const WRITES: [string, string, unknown][] = [
+/**
+ * Commands that write one option through `$.config.set`, and what they write; the wallpaper is Kiki and on unless
+ * the row gives the options it starts from. Each is a real change: a command that asks for what already is writes
+ * nothing (core-writes.test.ts).
+ */
+const WRITES: [string, string, unknown, Record<string, unknown>?][] = [
   ['blackhole', 'wallpaper', 'blackhole'],
   ['black-hole', 'wallpaper', 'blackhole'],
   ['hole', 'wallpaper', 'blackhole'],
-  ['kiki', 'wallpaper', 'kiki'],
+  ['kiki', 'wallpaper', 'kiki', { wallpaper: 'blackhole' }],
   ['off', 'on', false],
   ['motion light', 'motion', 'light'],
   ['motion off', 'motion', 'off'],
@@ -252,8 +256,8 @@ const WRITES: [string, string, unknown][] = [
   ['time night', 'kikiTime', 'night'],
   ['spinner off', 'kikiSpinner', false],
 ]
-for (const [text, key, value] of WRITES) {
-  test(`/wallpaper ${text} writes the option ${key} through config.set, and answers with the status line`, async ($, on) => {
+for (const [text, key, value, options] of WRITES) {
+  test(`/wallpaper ${text} writes the option ${key} through config.set, and answers with the status line`, { options: (options ?? {}) as never }, async ($, on) => {
     const seen = await begin($, on)
     const answer = await $.command.run(wallpaper(text))
     expect(seen.written).toEqual([{ field: key, value }])
@@ -493,10 +497,10 @@ test('with Show FPS off there is no note', async ($, on) => {
   await ui.unmount()
 })
 
-/** Buttons of the pane that are pressed, and the one option each writes. */
-const PRESSES: [string, string, unknown][] = [
+/** Buttons of the pane that are pressed, and the one option each writes; each is a real change from the options it starts from. */
+const PRESSES: [string, string, unknown, Record<string, unknown>?][] = [
   ['wallpaper:blackhole', 'wallpaper', 'blackhole'],
-  ['wallpaper:kiki', 'wallpaper', 'kiki'],
+  ['wallpaper:kiki', 'wallpaper', 'kiki', { wallpaper: 'blackhole' }],
   ['on:false', 'on', false],
   ['motion:off', 'motion', 'off'],
   ['motion:light', 'motion', 'light'],
@@ -509,8 +513,8 @@ const PRESSES: [string, string, unknown][] = [
   ['kikiTime:night', 'kikiTime', 'night'],
   ['kikiSpinner:false', 'kikiSpinner', false],
 ]
-for (const [key, option, value] of PRESSES) {
-  test(`pressing ${key} in the pane writes the option ${option} = ${String(value)} and nothing else`, async ($, on) => {
+for (const [key, option, value, options] of PRESSES) {
+  test(`pressing ${key} in the pane writes the option ${option} = ${String(value)} and nothing else`, { options: (options ?? {}) as never }, async ($, on) => {
     const seen = await begin($, on)
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
     await ui.press({ key })
