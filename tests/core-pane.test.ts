@@ -9,6 +9,9 @@
 //     value: boolean | string | number     the value pressing it writes (for a toggle, the opposite of today's)
 //     label: string                        what the button says
 //     current?: boolean                    true on the button whose value is the setting's today (choices only)
+//     also?: { key: 'on'; value: true }    on a WALLPAPER's control only, and only while settings.on is false: the
+//                                          second write a press makes (`wallpaper` first, then `on`), as the command
+//                                          does; absent on every other control and whenever settings.on is true
 //   }
 //   type PaneRow =
 //     | { kind: 'controls'; label: string; controls: Control[] }     a row of buttons, left to right
@@ -16,7 +19,8 @@
 //     | { kind: 'note'; text: string }
 //   paneRows(settings: Settings, wallpapers: readonly Wallpaper[]): PaneRow[]
 //     plain data (JSON-safe), in this order:
-//       1. one control per wallpaper (key 'wallpaper', value its id, label its label); only the current one is `current`
+//       1. one control per wallpaper (key 'wallpaper', value its id, label its label); only the current one is
+//          `current`; each carries `also` while the wallpaper is off
 //       2. on/off: ONE control, key 'on', value = !settings.on
 //       3. motion: three controls, values smooth, light, off; the setting's is `current`
 //       4. clear, 5. blur, 6. dim: two controls each, [minus, plus], labelled '-' and '+', with the value they would
@@ -101,6 +105,28 @@ test('the rows run in order: wallpapers, on, motion, the three numbers, colors, 
       expect(c.label.length > 0).toBe(true)
     }
   }
+})
+
+test('while the wallpaper is off every wallpaper button also switches it on; while it is on none does', () => {
+  const ON = { key: 'on', value: true }
+  for (const wallpaper of ['kiki', 'blackhole']) {
+    const off = controlsOf(rows({ on: false, wallpaper }), 'wallpaper') as (Control & { also?: unknown })[]
+    expect([wallpaper, off.length]).toEqual([wallpaper, 2])
+    for (const c of off) expect([wallpaper, c.value, c.also]).toEqual([wallpaper, c.value, ON])
+    const live = controlsOf(rows({ on: true, wallpaper }), 'wallpaper') as (Control & { also?: unknown })[]
+    for (const c of live) expect([wallpaper, c.value, c.also]).toEqual([wallpaper, c.value, undefined])
+  }
+  // From the list the pane is given, whichever wallpaper is on.
+  const all = controlsOf(rows({ on: false, wallpaper: 'stand' }, {}, {}, ALL), 'wallpaper') as (Control & { also?: unknown })[]
+  expect(all.map(c => c.also)).toEqual([ON, ON, ON])
+  // Nothing else carries one, off or on.
+  for (const on of [true, false]) {
+    for (const c of allControls(rows({ on, wallpaper: 'blackhole' }))) {
+      if (c.key !== 'wallpaper') expect([on, c.key, c.value, (c as { also?: unknown }).also]).toEqual([on, c.key, c.value, undefined])
+    }
+  }
+  // And the control itself keeps what it was: its key and value are the wallpaper's own.
+  expect(controlsOf(rows({ on: false }), 'wallpaper').map(c => [c.key, c.value, c.current === true])).toEqual([['wallpaper', 'kiki', true], ['wallpaper', 'blackhole', false]])
 })
 
 test('there is one button per wallpaper, and only the current one is marked', () => {

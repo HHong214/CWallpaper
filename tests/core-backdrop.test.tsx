@@ -520,12 +520,12 @@ for (const [key, option, value] of PRESSES) {
   })
 }
 
-test('pressing a wallpaper in the pane while the look is off writes the wallpaper alone', { options: { on: false } }, async ($, on) => {
+test('pressing a wallpaper in the pane while the look is off switches it on too: it writes the wallpaper, then `on`', { options: { on: false } }, async ($, on) => {
   const seen = await begin($, on)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'wallpaper:blackhole' })
   await ui.unmount()
-  expect(seen.written).toEqual([{ field: 'wallpaper', value: 'blackhole' }])
+  expect(seen.written).toEqual([{ field: 'wallpaper', value: 'blackhole' }, { field: 'on', value: true }])
 })
 
 // ------------------------------------------------ colors and the others' backdrops
