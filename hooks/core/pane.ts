@@ -16,6 +16,8 @@ export type Control = {
   label: string
   /** True on the button whose value is the setting's today (choices only). */
   current?: boolean
+  /** On a wallpaper's control while the wallpaper is off: the second write a press makes, after `wallpaper`. */
+  also?: { key: 'on'; value: true }
 }
 
 export type PaneRow =
@@ -65,7 +67,14 @@ function rows(settings: Settings, wallpapers: readonly Wallpaper[]): PaneRow[] {
     {
       kind: 'controls',
       label: 'Wallpaper',
-      controls: all.map(x => ({ key: 'wallpaper', value: x.id, label: x.label, ...(x === w ? { current: true } : {}) })),
+      // While the wallpaper is off, choosing one also switches it on, as the command does.
+      controls: all.map(x => ({
+        key: 'wallpaper',
+        value: x.id,
+        label: x.label,
+        ...(x === w ? { current: true } : {}),
+        ...(s.on === false ? { also: { key: 'on' as const, value: true as const } } : {}),
+      })),
     },
     toggleRow('Wallpaper shown', 'on', s.on !== false),
     choiceRow('Motion', 'motion', common('motion').choices ?? [], s.motion),

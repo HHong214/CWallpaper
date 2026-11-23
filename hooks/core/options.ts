@@ -110,6 +110,21 @@ export function readValue(o: OptionSpec, v: unknown): OptionValue {
   return Math.min(hi, Math.max(lo, Math.round(v))) + 0
 }
 
+/** What the settings hold for one manifest key ('dim', 'kikiTime'); undefined for a key no option has. */
+export function optionValue(settings: Settings, key: string, wallpapers: readonly HasOptions[]): OptionValue | undefined {
+  if (!isRecord(settings) || typeof key !== 'string') return undefined
+  const plain = (v: unknown): OptionValue | undefined => (typeof v === 'boolean' || typeof v === 'string' || typeof v === 'number' ? v : undefined)
+  if (COMMON.some(o => o.key === key)) return plain((settings as Record<string, unknown>)[key])
+  for (const w of usable(wallpapers)) {
+    for (const o of ownSpecs(w)) {
+      if (manifestKey(w.id, o.key) !== key) continue
+      const own = isRecord(settings.own) ? settings.own[w.id] : undefined
+      return plain(isRecord(own) ? own[o.key] : undefined)
+    }
+  }
+  return undefined
+}
+
 const common = (key: string): OptionSpec => COMMON.find(o => o.key === key) as OptionSpec
 
 /** The typed settings from the options the engine hands `register(on, options)`. */

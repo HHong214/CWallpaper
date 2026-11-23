@@ -20,7 +20,7 @@ import type { EngineInterface, Register, ThemeSetArgs, Timer } from 'claude-code
 
 import { helpText, parseCommand, statusText } from './core/commands'
 import type { Action } from './core/commands'
-import { readSettings } from './core/options'
+import { optionValue, readSettings } from './core/options'
 import type { OptionValue, Settings } from './core/options'
 import { paneRows } from './core/pane'
 import type { Control, PaneRow } from './core/pane'
@@ -39,6 +39,10 @@ const BRAND = '#D97757'
 // Session values that outlive a reload of this code (./types).
 const PANE_OPEN = { plugin: 'wallpaper', key: 'paneOpen' } as const
 const LOOK_SET = { plugin: 'wallpaper', key: 'lookSet' } as const
+const PENDING = { plugin: 'wallpaper', key: 'pendingWrites' } as const
+
+/** One option to write: its manifest key and the value. */
+type Write = { key: string; value: OptionValue }
 
 // --------------------------------------------------------------- settings
 
@@ -82,7 +86,9 @@ async function writeOption($: EngineInterface, key: string, value: OptionValue):
   const attempt = async (row: string): Promise<string> => {
     const set = await $.config.set({ key: row, value })
     if (set.deny !== undefined) return String(set.deny) || 'refused'
-    written = { ...written, [key]: value }
+    // The value the engine holds now, which another mod's hook may have changed.
+    const held = set.value
+    written = { ...written, [key]: typeof held === 'boolean' || typeof held === 'string' || typeof held === 'number' ? held : value }
     return ''
   }
   let why = 'no such option'
@@ -131,6 +137,25 @@ async function setLookSet($: EngineInterface, value: boolean): Promise<void> {
     // Not kept past a reload; nothing else changes.
   }
 }
+async function pendingWrites($: EngineInterface): Promise<Write[]> {
+  try {
+    const { value } = await $.state.get(PENDING)
+    if (!Array.isArray(value)) return []
+    return value.filter(
+      (w): w is Write =>
+        w !== null && typeof w === 'object' && typeof w.key === 'string' && (typeof w.value === 'boolean' || typeof w.value === 'string' || typeof w.value === 'number'),
+    )
+  } catch {
+    return []
+  }
+}
+async function setPendingWrites($: EngineInterface, value: Write[]): Promise<void> {
+  try {
+    await $.state.set(PENDING, value.map(w => ({ key: w.key, value: w.value })))
+  } catch {
+    // Not kept past a reload: a change cut by one stays half made.
+  }
+}
 
 // ------------------------------------------------------------ wake draws
 
@@ -161,6 +186,8 @@ const APP_WAKE_GAP_MS = 120_000
 // for a redraw when the picture for the time now differs (Kiki's time of day).
 let shown: { id: string; source: string } | undefined
 let ticker: Timer | undefined
+// While above 0, a theme set or clear going through is this mod's own.
+let ownThemeCalls = 0
 
 async function clockNow($: EngineInterface): Promise<number> {
   try {
@@ -212,7 +239,8 @@ function wakeSoon($: EngineInterface): void {
   wakeCancel()
   for (const ms of WAKE_AFTER_MS) {
     try {
-      wakeTimers.push($.clock.after(ms, () => void wake($)))
+      // A redraw once the module was unloaded rejects: there is nothing left to draw then.
+      wakeTimers.push($.clock.after(ms, () => void wake($).catch(() => undefined)))
     } catch {
       // No timer: /wallpaper with no words draws the scene afresh instead.
     }
@@ -236,7 +264,7 @@ function tickSoon($: EngineInterface): void {
         if (!s.on || !shown || shown.id !== s.wallpaper) return
         const scene = sceneFor(s, WALLPAPERS, await clockNow($))
         if (scene.kind === 'svg' && scene.source !== shown.source) await redraw($)
-      })()
+      })().catch(() => undefined)
     })
   } catch {
     // No timer: the picture moves on at the next redraw.
@@ -265,14 +293,19 @@ async function apply($: EngineInterface): Promise<string> {
   // Setting the look makes the app draw it: that draw is the mod's own.
   await markOwn($)
   let why: string
+  ownThemeCalls += 1
   try {
-    const set = await $.theme.set(look)
-    why = set.isDrawn ? '' : set.reason
-  } catch {
-    // Claude Code before 2.1.323 names the scene `id` and refuses `scene`.
-    const older = { backdrop: { id: w.id, glass } } as unknown as ThemeSetArgs
-    const set = await $.theme.set(older)
-    why = set.isDrawn ? '' : set.reason
+    try {
+      const set = await $.theme.set(look)
+      why = set.isDrawn ? '' : set.reason
+    } catch {
+      // Claude Code before 2.1.323 names the scene `id` and refuses `scene`.
+      const older = { backdrop: { id: w.id, glass } } as unknown as ThemeSetArgs
+      const set = await $.theme.set(older)
+      why = set.isDrawn ? '' : set.reason
+    }
+  } finally {
+    ownThemeCalls -= 1
   }
   await setLookSet($, true)
   // Wake draws, counted from now, as the app may already have drawn the scene
@@ -282,18 +315,62 @@ async function apply($: EngineInterface): Promise<string> {
   return why
 }
 
-/** Takes the look off: only on the person's ask, or once the option says off. */
+/**
+ * Takes the look off. A clear clears whatever theme stands, whichever plugin set
+ * it, so it is made only when the person switches the wallpaper off through this
+ * mod while it is on, and at a start only while `lookSet` says the standing look
+ * is the one this mod set this session.
+ */
 async function takeOff($: EngineInterface): Promise<void> {
   wakeCancel()
-  await $.theme.clear().catch(() => undefined)
+  ownThemeCalls += 1
+  try {
+    await $.theme.clear().catch(() => undefined)
+  } finally {
+    ownThemeCalls -= 1
+  }
   await setLookSet($, false)
 }
 
-/** Applies what the settings now say and redraws. */
-async function refresh($: EngineInterface): Promise<void> {
-  if (settingsNow().on) await apply($).catch(() => '')
-  else await takeOff($)
-  await redraw($)
+/**
+ * Makes writes in order, each taken off the session's `pendingWrites` as it is
+ * made, so the reload the first one causes cannot cut the change in two: the
+ * next start makes the rest. Answers '' once all are made, else why not.
+ */
+async function writeAll($: EngineInterface, todo: Write[]): Promise<string> {
+  await setPendingWrites($, todo)
+  for (const [i, one] of todo.entries()) {
+    const why = await writeOption($, one.key, one.value)
+    if (why !== '') {
+      await setPendingWrites($, [])
+      return `could not change ${one.key}: ${why}`
+    }
+    await setPendingWrites($, todo.slice(i + 1))
+  }
+  return ''
+}
+
+/**
+ * One change asked for by a command or a press. Only the writes that would change
+ * something are made; with none, nothing is written and the look is not set
+ * again. Then the look follows, and it is cleared only when this change switched
+ * the wallpaper off. Answers '' or why a write was refused.
+ */
+async function change($: EngineInterface, writes: Write[]): Promise<string> {
+  const before = settingsNow()
+  const todo = writes.filter(w => optionValue(before, w.key, WALLPAPERS) !== w.value)
+  if (todo.length === 0) return ''
+  const why = await writeAll($, todo)
+  // The write may have reloaded the module: this copy's calls can then reject.
+  try {
+    const now = settingsNow()
+    if (now.on) await apply($)
+    else if (before.on) await takeOff($)
+    await redraw($)
+  } catch {
+    // The new copy sets the look at its start.
+  }
+  return why
 }
 
 // ---------------------------------------------------------------- the pane
@@ -308,14 +385,14 @@ async function openPane($: EngineInterface): Promise<boolean> {
   return opened.isPlaced
 }
 
-/** A press in the pane: writes its one option, then shows the new value at once; the pane stays open. */
+/** A press in the pane: writes its option (then `on`, for a wallpaper chosen while off) and shows it at once; the pane stays open. */
 async function press($: EngineInterface, c: Control): Promise<void> {
-  const why = await writeOption($, c.key, c.value)
-  if (why !== '') {
-    $.ui.toast(`The wallpaper could not change ${c.key}: ${why}`)
-    return
+  try {
+    const why = await change($, [{ key: c.key, value: c.value }, ...(c.also ? [c.also] : [])])
+    if (why !== '') $.ui.toast(`The wallpaper ${why}`)
+  } catch {
+    // The module was reloaded under the press: the new copy draws the pane.
   }
-  await refresh($)
 }
 
 // ---------------------------------------------------------------- commands
@@ -336,11 +413,8 @@ async function run($: EngineInterface, args: string): Promise<string> {
     return isPlaced ? 'The wallpaper settings are open.' : `The settings pane could not open here. ${statusText(settingsNow(), WALLPAPERS)}`
   }
   const sets = [action, ...[action.also ?? []].flat()].filter((a): a is Extract<Action, { kind: 'set' }> => a.kind === 'set')
-  for (const one of sets) {
-    const why = await writeOption($, one.key, one.value)
-    if (why !== '') return `The wallpaper could not change ${one.key}: ${why}.`
-  }
-  await refresh($)
+  const why = await change($, sets.map(one => ({ key: one.key, value: one.value })))
+  if (why !== '') return `The wallpaper ${why}.`
   return statusText(settingsNow(), WALLPAPERS)
 }
 
@@ -366,6 +440,17 @@ export const register: Register = (on, options) => {
       // The look still applies.
     }
     try {
+      // A change the last reload cut in two: its writes still to make, in order.
+      const left = await pendingWrites($)
+      if (left.length > 0) {
+        const s = settingsNow()
+        const why = await writeAll($, left.filter(w => optionValue(s, w.key, WALLPAPERS) !== w.value))
+        if (why !== '') $.ui.toast(`The wallpaper ${why}`)
+      }
+    } catch {
+      // Left as it is.
+    }
+    try {
       const s = settingsNow()
       if (s.on) {
         // A line here means the desktop app would ignore the colors altogether.
@@ -373,7 +458,8 @@ export const register: Register = (on, options) => {
         if (unpainted !== undefined && s.colors) $.ui.toast(unpainted)
         await apply($)
       } else if (await isLookSet($)) {
-        // Turned off on the options screen: the look this mod set this session goes.
+        // Turned off on the options screen: the look this mod set this session, and that
+        // still stands (no theme set or cleared by anyone else since), goes, once.
         await takeOff($)
       }
     } catch {
@@ -405,6 +491,20 @@ export const register: Register = (on, options) => {
     // Closed by the person or a plugin: not opened again after a reload.
     if (e.id === PANE && e.origin.kind !== 'unload') await setPaneOpen($, false)
     return closed
+  }).catch(($, e, next) => next(e))
+
+  // There is one theme, and the engine says nowhere whose stands. A theme set or
+  // cleared by anyone else ends this mod's claim to it, so a later start that
+  // finds the option off clears nothing.
+  on('theme.set', async ($, e, next) => {
+    const set = await next(e)
+    if (ownThemeCalls === 0) await setLookSet($, false)
+    return set
+  }).catch(($, e, next) => next(e))
+  on('theme.clear', async ($, e, next) => {
+    const cleared = await next(e)
+    if (ownThemeCalls === 0) await setLookSet($, false)
+    return cleared
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'Backdrop' }, async ($, e, next) => {
