@@ -40,6 +40,10 @@
 //     above the space outside the disc; the band's left half is at least 10% brighter than its right; light
 //     above and below the ring is any (mean excess above 0.0005), above greater than below.
 //
+// CONTRACT v2 (placement): the prompt box's top and bottom change nothing (the box grows as the owner types). The
+// centre is (left + right) / 2 across and 0.57 of the window's height up (the window's centre with no prompt box),
+// and R = size * min(clamp(0.16 W, 48, 150), 0.18 * the window's height).
+//
 // Why these fail now: the shader file does not exist, so loadShader() fails to import it, in each test.
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -90,17 +94,16 @@ function render({ points = BIG, composer = PROMPT, values = {}, frames = [30], f
   return cache.get(key)
 }
 
-/** The contract's W, H, centre and R, in points with y up. `size` is the value the shader sees (after the stand-in holds it to 10 bits). */
+/** The contract's (v2) W, centre and R, in points with y up. The prompt box's top and bottom change nothing. `size` is the value the shader sees (after the stand-in holds it to 10 bits). */
 function geometry(points, composer, sizeValue = 1) {
   const [sx, sy] = points
   const [l, b, rt, t] = composer
   const none = composer.every(v => v === 0)
   const W = none ? 0.6 * sx : (rt - l) * sx
-  const H = none ? sy : (1 - t) * sy
   const cx = none ? sx / 2 : ((l + rt) / 2) * sx
-  const cy = none ? sy / 2 : ((t + 1) / 2) * sy
-  const R = sizeValue * Math.min(Math.min(Math.max(0.16 * W, 48), 150), 0.21 * H)
-  return { W, H, cx, cy, R }
+  const cy = none ? sy / 2 : 0.57 * sy
+  const R = sizeValue * Math.min(Math.min(Math.max(0.16 * W, 48), 150), 0.18 * sy)
+  return { W, cx, cy, R }
 }
 /** What the stand-in makes of a value: held to its range, on 10 bits of it. */
 const held = (range, v) => {
@@ -201,19 +204,21 @@ describe('the grid', () => {
 })
 
 describe('where it sits', () => {
-  // composer is left, bottom, right, top. A window of 900 by 600 points.
+  // composer is left, bottom, right, top. A window of 900 by 600 points unless a case says otherwise.
+  // v2: the centre is 0.57 of the window's height up whatever the box's top and bottom, and R is bounded by 0.18 of it.
   const cases = [
     ['a prompt box in the middle', PROMPT],
     ['a prompt box pushed left', [0.05, 0.05, 0.65, 0.15]],
     ['a prompt box pushed right', [0.35, 0.05, 0.95, 0.15]],
     ['no prompt box', [0, 0, 0, 0]],
-    ['a tall prompt box (little room above it, so 0.21 H sets R)', [0.2, 0.05, 0.8, 0.55]],
+    ['a tall prompt box (its top changes nothing)', [0.2, 0.05, 0.8, 0.55]],
     ['a narrow prompt box (0.16 W is under 48, so 48 sets R)', [0.4, 0.05, 0.6, 0.15]],
+    ['a short window, 900 by 300 (0.18 of its height sets R)', PROMPT, [900, 300]],
   ]
-  for (const [name, composer] of cases) {
+  for (const [name, composer, points = BIG] of cases) {
     it(`${name}: the dark middle is at the formulas' centre and radius, and the light keeps inside 1.15 W`, async () => {
-      const shot = await render({ composer })
-      const g = geometry(BIG, composer)
+      const shot = await render({ composer, points })
+      const g = geometry(points, composer)
       const m = measureShadow(shot, 30, g)
       assert.ok(m, `the middle of the picture is not dark at the expected centre (${g.cx}, ${g.cy})`)
       assert.ok(Math.abs(m.cx - g.cx) <= 8, `centre across: measured ${m.cx.toFixed(1)}, formula ${g.cx.toFixed(1)}`)
@@ -231,6 +236,38 @@ describe('where it sits', () => {
       assert.ok(worst <= reach, `light reaches ${worst.toFixed(1)} points from the centre, the limit is ${reach.toFixed(1)}`)
     })
   }
+})
+
+describe('the prompt box as it grows (v2)', () => {
+  // The box's top and bottom change as the owner types; nothing may move with them. Its left and right still do.
+  const same = (a, b, label) => {
+    for (const f of [30, 60]) {
+      let worst = 0
+      for (let i = 0; i < a.pics[f].length; i++) worst = Math.max(worst, Math.abs(a.pics[f][i] - b.pics[f][i]))
+      assert.equal(worst, 0, `${label}: frame ${f} differs by up to ${worst}`)
+    }
+  }
+  it('two prompt boxes that differ only in top (0.14 against 0.34) give the same picture, pixel for pixel', async () => {
+    const low = await render({ points: SMALL, composer: [0.2, 0.05, 0.8, 0.14], frames: [30, 60] })
+    const high = await render({ points: SMALL, composer: [0.2, 0.05, 0.8, 0.34], frames: [30, 60] })
+    same(low, high, 'top 0.14 and 0.34')
+  })
+  it('two prompt boxes that differ only in bottom (0.02 against 0.12) give the same picture, pixel for pixel', async () => {
+    const a = await render({ points: SMALL, composer: [0.2, 0.02, 0.8, 0.2], frames: [30, 60] })
+    const b = await render({ points: SMALL, composer: [0.2, 0.12, 0.8, 0.2], frames: [30, 60] })
+    same(a, b, 'bottom 0.02 and 0.12')
+  })
+  it('a prompt box moved sideways still moves the hole: its centre follows the box across', async () => {
+    const left = await render({ points: SMALL, composer: [0.05, 0.05, 0.65, 0.15] })
+    const right = await render({ points: SMALL, composer: [0.35, 0.05, 0.95, 0.15] })
+    const gl = geometry(SMALL, [0.05, 0.05, 0.65, 0.15])
+    const gr = geometry(SMALL, [0.35, 0.05, 0.95, 0.15])
+    const ml = measureShadow(left, 30, gl)
+    const mr = measureShadow(right, 30, gr)
+    assert.ok(ml && mr, 'the middle is not dark at the expected centre')
+    assert.ok(Math.abs(ml.cx - gl.cx) <= 8 && Math.abs(mr.cx - gr.cx) <= 8)
+    assert.ok(mr.cx - ml.cx > 0.25 * SMALL[0], `the hole moved ${(mr.cx - ml.cx).toFixed(1)} points across, the boxes are ${(gr.cx - gl.cx).toFixed(1)} apart`)
+  })
 })
 
 describe('the picture', () => {
