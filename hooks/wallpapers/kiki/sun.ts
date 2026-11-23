@@ -3,7 +3,7 @@
 // Pure maths: no `$`, no network and no clock of its own, every input is an
 // argument. Kept from the pixel valley's almanac when the valley was taken
 // out, so the scene turns at the same moments it did.
-import type { Phase } from './types'
+import type { Phase } from './types.ts'
 
 /** Where the sun is reckoned from: degrees north and east, and a name to show. */
 export type Place = { lat: number; lon: number; name: string }

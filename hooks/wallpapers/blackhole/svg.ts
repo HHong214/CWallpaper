@@ -1,4 +1,4 @@
-// The black hole: ASCII art drawn by code (./blackhole/field), a dark centre in
+// The black hole: ASCII art drawn by code (./field), a dark centre in
 // a thin bright ring, its glowing disc bent over and under it, and everything
 // round it drawn in. This file puts the field's frames in one SVG picture and
 // plays them in a loop. Pure: options in, a picture out. No `$`, no JSX, no
@@ -12,7 +12,7 @@
 // front band with a gradient of its own, hottest just left of the ring. A few
 // characters a frame take a stray colour, as a real screen of ASCII art has.
 // The frames take turns by opacity, in steps, never a fade.
-import { COLS, FRAMES, GEOMETRY, ROWS, frame } from './blackhole/field'
+import { COLS, FRAMES, GEOMETRY, ROWS, frame } from './field.ts'
 
 export type BlackholeMotion = 'smooth' | 'light' | 'off'
 export type BlackholeOptions = { motion: BlackholeMotion; dim?: number }

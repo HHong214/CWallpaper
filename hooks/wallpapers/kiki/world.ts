@@ -15,8 +15,8 @@
 // always gives the same markup. Ids, classes and @keyframes all start with `w-`.
 // When `ask.still` is set there is no CSS and no SMIL, and the markup equals the
 // animated version's base state (frame 0 everywhere, motion-only things left out).
-import { bufArt } from './pixels'
-import type { Ask, World } from './types'
+import { bufArt } from './pixels.ts'
+import type { Ask, World } from './types.ts'
 
 const W = 320
 const H = 180

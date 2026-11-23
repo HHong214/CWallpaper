@@ -24,7 +24,7 @@ type Span = { s: number; e: number; must: number[] }
  * pixel's key to its colour ('rrggbb', with or without '#'). Every pixel ends
  * its own colour: no rectangle touches a clear pixel or a pixel of a colour
  * painted before its own. Every edge falls on a whole unit. No crispEdges
- * (../kiki.ts says why): the edges are smoothed, which only shows when the
+ * (./scene.ts says why): the edges are smoothed, which only shows when the
  * picture is scaled by a fraction.
  */
 export function bufArt(b: PixelBuf, hexOf: (key: number) => string, ox = 0, oy = 0): string {

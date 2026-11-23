@@ -1,7 +1,6 @@
 {
   "name": "wallpaper",
-  "version": "1.9.0",
-  "description": "A moving wallpaper and matching colors for the whole app: Kiki (pixel art of a young witch and her black cat floating on a broom toward a seaside city, following your clock from day to sunset to night), a black hole in ASCII art drawn by code (a gold ring, its disc bent over and under it, everything streaming in), or a picture or short video loop of your own. /wallpaper settings sets how see-through and blurred the panels are.",
+  "description": "A moving wallpaper and matching colors for the whole app: Kiki (pixel art of a young witch and her black cat floating on a broom toward a seaside city, following your clock from day to sunset to night) or a black hole in ASCII art drawn by code (a gold ring, its disc bent over and under it, everything streaming in). Its settings are the plugin's options; /wallpaper settings opens them in a pane.",
   "author": {
     "name": "local"
   },
@@ -17,11 +16,87 @@
     "ascii-art",
     "black-hole"
   ],
+  "types": "./types/index.d.ts",
   "userConfig": {
-    "spinner": {
+    "wallpaper": {
+      "type": "string",
+      "title": "Wallpaper",
+      "description": "Which wallpaper the app shows.",
+      "default": "kiki",
+      "options": [
+        "kiki",
+        "blackhole"
+      ]
+    },
+    "on": {
       "type": "boolean",
-      "title": "Spinner: cat face",
-      "description": "Adds a small cat face to the line that shows while Claude works, in the Kiki theme.",
+      "title": "Wallpaper: on",
+      "description": "Show the wallpaper and its colors, or leave the app its own look.",
+      "default": true
+    },
+    "motion": {
+      "type": "string",
+      "title": "Motion",
+      "description": "How the wallpaper moves: smooth (all of it), light (calmer: Kiki's shooting star rests, the black hole turns more slowly) or off (still).",
+      "default": "smooth",
+      "options": [
+        "smooth",
+        "light",
+        "off"
+      ]
+    },
+    "clear": {
+      "type": "number",
+      "title": "Panels: how clear",
+      "description": "How see-through the app panels are over the wallpaper: 0 is solid, 100 is clear.",
+      "default": 100,
+      "min": 0,
+      "max": 100
+    },
+    "blur": {
+      "type": "number",
+      "title": "Panels: blur",
+      "description": "How far the panels blur the wallpaper behind them, 0 to 40.",
+      "default": 0,
+      "min": 0,
+      "max": 40
+    },
+    "dim": {
+      "type": "number",
+      "title": "Scene: dim",
+      "description": "How much the wallpaper itself is darkened so words stand clear of it, 0 to 80.",
+      "default": 30,
+      "min": 0,
+      "max": 80
+    },
+    "colors": {
+      "type": "boolean",
+      "title": "App colors follow the wallpaper",
+      "description": "Repaint the app in colors that match the wallpaper.",
+      "default": true
+    },
+    "fps": {
+      "type": "boolean",
+      "title": "Show FPS",
+      "description": "Show the frame rate of a wallpaper the app plays on the GPU.",
+      "default": false
+    },
+    "kikiTime": {
+      "type": "string",
+      "title": "Kiki: time of day",
+      "description": "Which part of the day Kiki shows: auto follows the clock (sunrise at 06:30, sunset at 18:30), or always day, sunset or night.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "day",
+        "sunset",
+        "night"
+      ]
+    },
+    "kikiSpinner": {
+      "type": "boolean",
+      "title": "Kiki: cat spinner",
+      "description": "Adds a small cat face to the line that shows while Claude works, while Kiki is the wallpaper.",
       "default": true
     }
   }

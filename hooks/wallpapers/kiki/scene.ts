@@ -1,17 +1,17 @@
 // Kiki: pixel art of a young witch and her black cat floating on a broom toward
-// a seaside city. The world (./kiki/world) draws the sky, the sea and the city;
-// the hero (./kiki/hero) draws the witch, her broom and the cat. This file puts
+// a seaside city. The world (./world) draws the sky, the sea and the city;
+// the hero (./hero) draws the witch, her broom and the cat. This file puts
 // them in one SVG picture, bottom to top. Pure: a phase in, a picture out.
 // No `$`, no JSX, no DOM, no Node APIs, so a preview script can import it too.
 //
 // Why one picture: the app draws each picture of a stack as an image of its
 // own, the size of the window, and in the desktop app a stack of them never
 // moved, while the same scene as one picture did. The art is written in
-// painter's order (./kiki/pixels), which keeps the whole scene within the size
+// painter's order (./pixels), which keeps the whole scene within the size
 // one picture may have.
-import type { Ask, Light, Phase } from './kiki/types'
-import { world } from './kiki/world'
-import { hero } from './kiki/hero'
+import type { Ask, Light, Phase } from './types.ts'
+import { world } from './world.ts'
+import { hero } from './hero.ts'
 
 export type { Light, Phase }
 
@@ -28,7 +28,7 @@ const ALT: Record<Phase, string> = {
   night: `${WHO}, at night: stars and the moon above, lit windows in the city.`,
 }
 
-// The art is filled rectangles on the pixel grid (./kiki/pixels). No
+// The art is filled rectangles on the pixel grid (./pixels). No
 // shape-rendering="crispEdges", not even on a group: the desktop app never
 // animates a picture that sets it. Edges sit on whole units, so at a
 // whole-number scale they stay sharp all the same.
@@ -46,7 +46,7 @@ const made = new Map<string, KikiScene>()
 
 /**
  * The scene for a phase of the day, as one picture; `still` leaves out every
- * animation; `light` holds some moving parts still (./kiki/types).
+ * animation; `light` holds some moving parts still (./types).
  */
 export function kikiScene(phase: Phase, still = false, light?: Light): KikiScene {
   const on = light ? (['stillBeam', 'stillShoot', 'stillCam'] as const).filter(k => light[k] === true) : []

@@ -12,8 +12,8 @@
 // hair, bow ribbons, hem, legs, cat tail, cat ear and radio change by FRAMES:
 // groups toggled with CSS visibility keyframes on step timing, frame 0 shown
 // in the base state and every other frame carrying visibility="hidden".
-import { bufArt } from './pixels'
-import type { Ask, Layer, Phase } from './types'
+import { bufArt } from './pixels.ts'
+import type { Ask, Layer, Phase } from './types.ts'
 
 // The group's box in the viewBox: local pixel (0,0) is (88,52).
 const OX = 88

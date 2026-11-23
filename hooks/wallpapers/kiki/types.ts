@@ -1,5 +1,5 @@
 // Shared shapes for the Kiki scene's pieces (world.ts draws the sky, sea and
-// city, hero.ts the witch, her broom and the cat; ../kiki.ts puts them in one
+// city, hero.ts the witch, her broom and the cat; ./scene.ts puts them in one
 // SVG). Pixel art: one unit of the 320 x 180 viewBox is one pixel of the art.
 // Pure types: no `$`, no DOM, no Node APIs.
 
@@ -30,7 +30,7 @@ export type Layer = { defs: string; css: string; body: string }
  * The world in two parts: `back`, everything under the hero (the sky, the
  * cloud range, the sea and the town, and all that moves on them, inside the
  * camera's groups), and `front`, what is drawn over the hero (may be '').
- * ../kiki.ts joins them round the hero into one picture, since the desktop
+ * ./scene.ts joins them round the hero into one picture, since the desktop
  * app never animates a stack of pictures. When still, the same parts with
  * nothing moving in them.
  */
