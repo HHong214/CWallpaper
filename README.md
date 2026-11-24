@@ -53,3 +53,9 @@ Fine characters (the black hole's are 6 by 10 points) vanish behind a blurred pa
 ## Make a wallpaper
 
 Read [CLAUDE.md](CLAUDE.md). It takes an agent from nothing to a finished wallpaper, with the app's limits, the tools in `tools/` and the checks to run. [CHANGELOG.md](CHANGELOG.md) lists what changed and when.
+
+## Licence
+
+MIT: see [LICENSE](LICENSE). It covers the code and the pixel drawings, but not Kiki's character or setting: the Kiki wallpaper is fan art inspired by an existing animated film, and they belong to their rights holders.
+
+CWallpaper is not affiliated with or endorsed by Anthropic. Claude is a trademark of Anthropic.
