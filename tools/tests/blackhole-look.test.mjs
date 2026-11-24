@@ -9,8 +9,11 @@
 //   1. Level at both: |phi| <= 4 degrees (kit `rollDegrees`: the principal axis of the light over the disc's box).
 //   2. The swing: outside the jets' strip (|x - cx| > 0.5 R) the lit picture is between 0.40 and 0.60 as high as it is wide at high, and
 //      between 0.04 and 0.22 at low (kit `spreadRatio`: the weighted standard deviation of y over that of x).
-//   3. A whole black circle at high: over r < 0.8 R the mean red lane is under 0.012 and the blue under 0.018; and a ring all round: in each
-//      of twelve 30 degree sectors of the annulus 0.95 R to 1.25 R at least 20% of the samples are lit.
+//   3. A whole black circle at high (changed 2026-11-24: the disc now starts at 1.25 R and its near side dips over the circle's lowest part): over
+//      the part of r < 0.8 R that lies above the line 0.45 R below the centre the mean red lane is under 0.012 and the blue under 0.018; a ring
+//      all round: in each of twelve 30 degree sectors of the annulus 0.95 R to 1.25 R at least 20% of the samples are lit; and no gap at the
+//      sides: in the two boxes from 1.2 R to 1.7 R left and right of the centre, 0.1 R above and below the horizontal through it, at least
+//      half of the cells (6 by 10 points; a cell is lit when any of its samples is) are lit (kit `sideBoxCells`).
 //   4. At low the upper half is dark and the disc crosses the lower: the circle of radius 0.35 R centred 0.4 R above the centre is black as in
 //      3; in the strip |x - cx| <= 0.15 R the lit samples between 0.9 R and 0.1 R below the centre span 0.15 R or more.
 //   5. White-hot inside, red outside (high): of the cells that see the disc (geo.x > 0, not ring, not spark, not jet), the inner third by radius is
@@ -35,11 +38,13 @@
 // (the jet strip holds the old picture's orange: n 239 at high): FAILS. 8 the present shader's kind bits 8 and 16 are its old stray
 // colours (teal and violet): 167 lit at high, 159 at low, 83% still lit in the same cell at frame 75 (needs under 70%): FAILS on the
 // persistence. 9 median 2.119 R (needs 0.8 to 1.8): FAILS.
+// ITEM 3 AS CHANGED (2026-11-24), on the builder's first build in the working tree (uncommitted): the black part (red 0.0000, blue 0.0001) and the
+// ring (weakest sector 25%) pass; the side boxes are empty: 0 of 5 cells lit on the left and 0 of 5 on the right (needs half of each): FAILS on that.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   brightestMedian, cellKinds, discColourByRadius, drive, findBuffers, geometry, jetSamples, lanesOver, litTexels, lowerStripSpan,
-  PROMPT, ringSectors, rollDegrees, sideMeans, spreadRatio,
+  PROMPT, ringSectors, rollDegrees, sideBoxCells, sideMeans, spreadRatio,
 } from './blackhole-kit.mjs'
 import { discCells } from './blackhole-motion.mjs'
 
@@ -108,13 +113,15 @@ describe('the view (contract v5, items 1, 2, 6, 9)', () => {
 })
 
 describe('the hole (contract v5, items 3 and 4)', () => {
-  it('3. is a whole black circle with a ring all round at high: r < 0.8 R is black, and every 30 degree sector of 0.95 R to 1.25 R is 20% lit', { timeout: 300000 }, async () => {
+  it('3. is a black circle with a ring all round and no gap at the sides at high: the part of r < 0.8 R above 0.45 R below the centre is black, every 30 degree sector of 0.95 R to 1.25 R is 20% lit, half the cells of the side boxes are lit', { timeout: 300000 }, async () => {
     const s = await frames()
-    const inside = lanesOver(s.shots[HIGH].pic, w, h, g, (dx, dy) => Math.hypot(dx, dy) < 0.8 * g.R)
+    const inside = lanesOver(s.shots[HIGH].pic, w, h, g, (dx, dy) => Math.hypot(dx, dy) < 0.8 * g.R && dy > -0.45 * g.R)
+    const sides = sideBoxCells(s.shots[HIGH].lum, w, h, g)
     const ring = ringSectors(s.shots[HIGH].lum, w, h, g)
-    const msg = `over r < 0.8 R the mean red is ${f4(inside.red)} (needs under 0.012) and blue ${f4(inside.blue)} (needs under 0.018); the weakest of the twelve ring sectors is ${(100 * ring.min).toFixed(0)}% lit (needs 20%): ${ring.fractions.map(v => (100 * v).toFixed(0)).join(' ')}`
+    const msg = `over the part of r < 0.8 R above 0.45 R below the centre the mean red is ${f4(inside.red)} (needs under 0.012) and blue ${f4(inside.blue)} (needs under 0.018); the weakest of the twelve ring sectors is ${(100 * ring.min).toFixed(0)}% lit (needs 20%): ${ring.fractions.map(v => (100 * v).toFixed(0)).join(' ')}; the side boxes hold ${sides.left.lit} of ${sides.left.n} cells lit on the left and ${sides.right.lit} of ${sides.right.n} on the right (needs half of each)`
     assert.ok(inside.red < 0.012 && inside.blue < 0.018, msg)
     assert.ok(ring.min >= 0.2, msg)
+    assert.ok(sides.left.n > 0 && sides.right.n > 0 && sides.left.lit >= 0.5 * sides.left.n && sides.right.lit >= 0.5 * sides.right.n, msg)
   })
   it('4. at low has a dark upper half and the disc across the lower: the circle 0.4 R above the centre is black, the strip below it spans 0.15 R or more', { timeout: 300000 }, async () => {
     const s = await frames()

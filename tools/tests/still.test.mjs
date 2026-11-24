@@ -114,8 +114,10 @@ describe('the still: a valid, small, still SVG', () => {
 // Lit means any character but a blank.
 //   S1. level: the principal axis of the light over the disc's box (|x - cx| <= 0.575 W, |y - cy| <= 0.35 W) is within 4 degrees of
 //       the horizontal (contract v5 item 1).
-//   S2. a whole black circle with a ring (item 3): no lit character within 0.8 R of the centre, and in each of twelve 30 degree
-//       sectors of the annulus 0.95 R to 1.25 R at least 20% of the character places are lit.
+//   S2. a black circle with a ring and no gap at the sides (item 3, as changed 2026-11-24): no lit character in the part of r < 0.8 R
+//       that lies above the line 0.45 R below the centre; in each of twelve 30 degree sectors of the annulus 0.95 R to 1.25 R at least 20%
+//       of the character places are lit; and in the two boxes from 1.2 R to 1.7 R left and right of the centre, 0.1 R above and below the
+//       horizontal through it, at least half of the character places (cells) are lit.
 //   S3. white-hot inside, red outside (item 5): the character places of the disc, those between 2 R and 4.2 R from the centre in
 //       the disc's own plane (the plane radius at the high angle, sqrt(dx^2 + (dy / sin 30)^2), the jets' strip |dx| <= 0.5 R left
 //       out), split by plane radius into an inner and an outer third: the inner third's mean light is at least twice the outer's; the
@@ -192,9 +194,13 @@ describe('the still: the frame at the high angle, read from its text rows', () =
     const phi = (0.5 * Math.atan2(2 * cxy, cxx - cyy) * 180) / Math.PI
     assert.ok(Math.abs(phi) <= 4, `the still's roll is ${f3(phi)} degrees (needs 4 or less)`)
   })
-  it('S2. has a whole black circle with a ring: nothing lit within 0.8 R, and each 30 degree sector of 0.95 R to 1.25 R is 20% lit', async () => {
+  it('S2. has a black circle with a ring and no gap at the sides: nothing lit in the upper part of r < 0.8 R, each 30 degree sector of 0.95 R to 1.25 R 20% lit, half the cells of the side boxes lit', async () => {
     const { g, places } = await read()
-    const inside = places.filter(c => Math.hypot(c.x - g.cx, c.y - g.cy) < 0.8 * g.R && c.lit)
+    const inside = places.filter(c => Math.hypot(c.x - g.cx, c.y - g.cy) < 0.8 * g.R && c.y - g.cy > -0.45 * g.R && c.lit)
+    const box = sign => places.filter(c => Math.abs(c.y - g.cy) <= 0.1 * g.R && sign * (c.x - g.cx) >= 1.2 * g.R && sign * (c.x - g.cx) <= 1.7 * g.R)
+    const left = box(-1)
+    const right = box(1)
+    const litOf = cells => cells.filter(c => c.lit).length
     const lit = new Float64Array(12)
     const all = new Float64Array(12)
     for (const c of places) {
@@ -205,9 +211,10 @@ describe('the still: the frame at the high angle, read from its text rows', () =
       if (c.lit) lit[k]++
     }
     const fractions = Array.from(all, (n, k) => (n ? lit[k] / n : 0))
-    const msg = `${inside.length} lit characters within 0.8 R (needs 0); the twelve ring sectors are ${fractions.map(v => (100 * v).toFixed(0)).join(' ')}% lit (needs 20% each)`
+    const msg = `${inside.length} lit characters in the upper part of r < 0.8 R (needs 0); the side boxes hold ${litOf(left)} of ${left.length} places lit on the left and ${litOf(right)} of ${right.length} on the right (needs half of each); the twelve ring sectors are ${fractions.map(v => (100 * v).toFixed(0)).join(' ')}% lit (needs 20% each)`
     assert.equal(inside.length, 0, msg)
     assert.ok(Math.min(...fractions) >= 0.2, msg)
+    assert.ok(left.length > 0 && right.length > 0 && litOf(left) >= 0.5 * left.length && litOf(right) >= 0.5 * right.length, msg)
   })
   it('S3. is white-hot inside and red outside: the inner third of the disc twice as bright as the outer, blue 0.45 of red inside and 0.30 or less outside', async () => {
     const { g, places } = await read()

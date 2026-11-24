@@ -700,3 +700,33 @@ export function cellKinds(geo) {
 
 /** The texels among `texels` that are lit now: the brightness drawn (flow.y) 0.15 or more. */
 export const litTexels = (flow, texels) => texels.filter(t => flow.data[t * 4 + 1] >= 0.15)
+
+/**
+ * Item 3's "no gap at the sides": the two boxes from 1.2 R to 1.7 R left and right of the centre, 0.1 R above and below the horizontal
+ * through it. A cell (6 by 10 points, on the fixed grid from the window's corner) belongs to a box when its centre does; it is lit when any
+ * of its samples is (excess luminance over 0.03). Gives { left: { n, lit }, right: { n, lit } } (cells counted).
+ */
+export function sideBoxCells(lum, w, h, g) {
+  const out = { left: { n: 0, lit: 0 }, right: { n: 0, lit: 0 } }
+  for (let row = 0; row * 10 < h; row++) {
+    for (let col = 0; col * 6 < w; col++) {
+      const x = (col + 0.5) * 6
+      const y = (row + 0.5) * 10
+      if (Math.abs(y - g.cy) > 0.1 * g.R) continue
+      const side = x >= g.cx + 1.2 * g.R && x <= g.cx + 1.7 * g.R ? 'right' : x <= g.cx - 1.2 * g.R && x >= g.cx - 1.7 * g.R ? 'left' : null
+      if (!side) continue
+      out[side].n++
+      let lit = false
+      for (let j = row * 10; j < Math.min(h, row * 10 + 10) && !lit; j++) {
+        for (let i = col * 6; i < Math.min(w, col * 6 + 6); i++) {
+          if (excess(lum[(h - 1 - j) * w + i]) > LIT) {
+            lit = true
+            break
+          }
+        }
+      }
+      if (lit) out[side].lit++
+    }
+  }
+  return out
+}
