@@ -1,5 +1,5 @@
 // The Kiki scene's hero, in pixel art: the young witch seen from behind on a
-// short broom, the crew's black cat on its front end and a little red radio
+// short broom, her black cat on its front end and a little red radio
 // hanging from the tip, floating as they fly off toward the town.
 // One unit of the 320 x 180 viewBox (./types) is one art pixel. Pure and
 // deterministic: no `$`, no DOM, no Node APIs, no clock, no randomness.

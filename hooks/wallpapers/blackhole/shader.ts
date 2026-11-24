@@ -290,9 +290,9 @@ const state: Buf = buffer({ size: [4, 1], float: 32, filter: 'nearest' }, p => {
     light = min(light + dtc / FADE_IN, 1)
   }
 
-  // the clock (calm makes it half as fast), and the tilt it gives: the high angle at the start
+  // the clock (calm makes it a quarter slower, and eases each cell's light faster than it once did), and the tilt it gives: the high angle at the start
   const fresh0 = first || s3.z < 0.01
-  const pace = v.speed * (1 - 0.5 * v.calm)
+  const pace = v.speed * (1 - 0.25 * v.calm)
   let ph = fresh0 ? 0.3 : s3.x + (dtc * pace) / FLOW_T
   let n = fresh0 ? 0 : s3.y
   if (ph >= 1) {
@@ -524,8 +524,8 @@ const flow: Buf = buffer({ scale: 1 / CELL_W, float: 32, filter: 'nearest' }, p 
 
   // ease what is shown; the glyph follows a copy of its own, with a margin and a rest between changes
   const dtc = clamp(dt, 0, 0.1)
-  const kF = 1 - exp(-dtc / mix(0.07, 0.4, calm))
-  const kS = 1 - exp(-dtc / mix(0.12, 1, calm))
+  const kF = 1 - exp(-dtc / mix(0.07, 0.18, calm))
+  const kS = 1 - exp(-dtc / mix(0.12, 0.45, calm))
   // a start: an empty or cleared buffer, or a picture faded to the ground (where the geometry may be
   // new): each cell takes its light and its glyph as they are, unseen
   const start = first || prev.z < 0.5 || st1.x < 0.001
