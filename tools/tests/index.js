@@ -15,7 +15,7 @@ const files = [
   './blackhole-look.test.mjs',
   './blackhole-visible.test.mjs',
 ]
-if (process.env.SLOW) files.push('./blackhole-flash.test.mjs', './blackhole-geometry-flash.test.mjs', './blackhole-spin.test.mjs')
+if (process.env.SLOW) files.push('./blackhole-flash.test.mjs', './blackhole-geometry-flash.test.mjs', './blackhole-spin.test.mjs', './blackhole-calm.test.mjs')
 Promise.all(files.map(f => import(f))).catch(e => {
   console.error(e)
   process.exitCode = 1

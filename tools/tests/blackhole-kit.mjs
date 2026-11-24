@@ -407,7 +407,7 @@ const GLYPH_BASE = 64 // flow.x = glyph shown + 64 * glyph before + 4096 * stray
 
 /**
  * Runs `shaderFile` (default: the shader under hooks/) on 600 by 378 points with the standard prompt box, dim 0, speed 1,
- * calm 0, size 1, frames 0 to 164 (frames 60 to 164 drawn), and measures:
+ * calm 0, size 1 (`values` changes any of them, over BASE), frames 0 to 164 (frames 60 to 164 drawn), and measures:
  *   M: the mean over frames 60 to 149 of the mean over the disc's box of |L(t + 15) - L(t)| (luminance), divided by the mean
  *      over frames 60 to 164 of the mean over the disc's box of the luminance above the ground
  *   glyphs (frame 90): over the cells that see the disc (geo.x > 0, not ring, not stray) and are lit (glyph above 0): { cells,
@@ -419,7 +419,7 @@ const GLYPH_BASE = 64 // flow.x = glyph shown + 64 * glyph before + 4096 * stray
  *   strays: for frames 60, 90, 120 and 150, the cells of kind stray (geo.w, floor(w / 8) % 4 above 0) whose brightness drawn
  *      (flow.y) is 0.15 or more, counted over the whole window
  */
-export async function visibleMetrics(shaderFile = SHADER) {
+export async function visibleMetrics(shaderFile = SHADER, values = {}) {
   const points = [600, 378]
   const g = geometry(points, PROMPT)
   const [w, h] = points
@@ -440,6 +440,7 @@ export async function visibleMetrics(shaderFile = SHADER) {
     frames: 165,
     draw: f => f >= 60,
     shader: shaderFile,
+    values,
     onFrame: (f, pic, r) => {
       const lum = r.luminance(pic)
       const box = new Float32Array((x1 - x0 + 1) * (y1 - y0 + 1))
