@@ -2,6 +2,12 @@
 
 Newest first, headed by date. There is no version number: every pushed commit is an update.
 
+## 2026-11-24
+
+- Show FPS is gone: its option, its row in the pane, its command and the number on screen.
+- The black hole is redrawn: a broad level disc, white-hot next to the hole and dark red at the rim, a black circle with a thin bright ring, blue-white jets streaming up and down, and sparks spiralling in. Its view swings slowly from above the disc to edge-on and back over a minute.
+- It is lighter to draw.
+
 ## 2026-11-23
 
 The mod was rebuilt.
