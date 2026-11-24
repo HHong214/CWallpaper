@@ -75,12 +75,6 @@
       "description": "Repaint the app in colors that match the wallpaper.",
       "default": true
     },
-    "fps": {
-      "type": "boolean",
-      "title": "Show FPS",
-      "description": "Draw the measured frames a second at the top left of the chat, on a wallpaper the app plays on the GPU.",
-      "default": false
-    },
     "kikiTime": {
       "type": "string",
       "title": "Kiki: time of day",

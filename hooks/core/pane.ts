@@ -82,15 +82,8 @@ function rows(settings: Settings, wallpapers: readonly Wallpaper[]): PaneRow[] {
     dialRow('Blur behind panels', 'blur', common('blur'), num('blur'), STEPS.blur ?? 4, ''),
     dialRow('Scene dimming', 'dim', common('dim'), num('dim'), STEPS.dim ?? 10, '%'),
     toggleRow('App colors', 'colors', s.colors !== false),
-    toggleRow('Show FPS', 'fps', s.fps === true),
   ]
   if (w === undefined) return out
-  if (w.kind === 'svg' && s.fps === true) {
-    out.push({ kind: 'note', text: 'The frame rate of this wallpaper cannot be measured: the app animates it itself, not on the GPU.' })
-  }
-  if (w.kind === 'shader' && s.fps === true) {
-    out.push({ kind: 'note', text: 'Drawn at the top left of the chat.' })
-  }
   const own = Array.isArray(w.options) ? w.options.filter(o => o && typeof o.key === 'string') : []
   out.push({ kind: 'heading', text: own.length > 0 ? w.label : `${w.label}: no settings of its own` })
   const values = (s.own && s.own[w.id]) || {}

@@ -35,7 +35,7 @@ export type Wallpaper = {
   svg(settings: Settings, now: number): string
   /** False when settings.motion is 'off'. */
   moves(settings: Settings): boolean
-  /** A shader wallpaper's numbers for its shader, at most 8 names (the scene adds dim, speed and fps). */
+  /** A shader wallpaper's numbers for its shader, at most 8 names (the scene adds dim and speed). */
   values?(settings: Settings): Record<string, number>
   /**
    * A shader wallpaper's Backdrop tree, called by the Backdrop hook with the

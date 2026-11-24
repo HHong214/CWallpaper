@@ -6,12 +6,12 @@ import type { ShaderScene, Wallpaper } from './registry.ts'
 
 export type Scene = { kind: 'none' } | { kind: 'svg'; source: string; alt: string } | ShaderScene
 
-/** A shader takes at most eight values; three are the scene's own. */
-const OWN_VALUES = 5
+/** A shader takes at most eight values; two are the scene's own. */
+const OWN_VALUES = 6
 
 const finite = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : fallback)
 
-/** The scene's own values, beside the wallpaper's: dim 0 to 0.8, speed 1 or 0.5, fps 1 or 0. */
+/** The scene's own values, beside the wallpaper's: dim 0 to 0.8, speed 1 or 0.5. */
 function sceneValues(w: Wallpaper, s: Settings): Record<string, number> {
   const out: Record<string, number> = {}
   let own: unknown
@@ -25,7 +25,6 @@ function sceneValues(w: Wallpaper, s: Settings): Record<string, number> {
   }
   out.dim = Math.min(0.8, Math.max(0, finite(s.dim, 30) / 100))
   out.speed = s.motion === 'light' ? 0.5 : 1
-  out.fps = s.fps === true ? 1 : 0
   return out
 }
 

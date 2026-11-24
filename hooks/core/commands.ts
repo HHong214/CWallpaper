@@ -68,7 +68,7 @@ function parse(text: unknown, settings: Settings, wallpapers: readonly Wallpaper
   if (verb === 'on' || verb === 'off') return rest.length === 0 ? set('on', verb === 'on') : unknown()
 
   // The common settings.
-  if (['motion', 'clear', 'blur', 'dim', 'colors', 'fps'].includes(verb)) {
+  if (['motion', 'clear', 'blur', 'dim', 'colors'].includes(verb)) {
     const o = common(verb)
     const value = parseValue(o, rest)
     return value === undefined ? error(`${verb} takes ${takes(o)}: /cwallpaper ${verb} <${o.type === 'number' ? `${o.min}-${o.max}` : (o.type === 'boolean' ? ['on', 'off'] : [...(o.choices ?? [])]).join('|')}>.`) : set(verb, value)
@@ -122,7 +122,7 @@ export function statusText(settings: Settings, wallpapers: readonly Wallpaper[])
     const mine = own.map(o => `${label} ${o.key}: ${word(readValue(o, values[o.key]))}`)
     const first = [`The wallpaper is ${label}.`, mine.length ? `${mine.join('; ')}.` : ''].filter(s => s !== '').join(' ')
     const dials = `Panels ${settings.clear}% clear, blur ${settings.blur}, scene dimmed ${settings.dim}%, app colors ${word(settings.colors)}, motion ${settings.motion}.`
-    return `${first}\n${dials}${settings.fps ? ' Show FPS on.' : ''}`
+    return `${first}\n${dials}`
   } catch {
     return 'The wallpaper could not say what it shows just now.'
   }
@@ -150,7 +150,6 @@ export function helpText(wallpapers: readonly Wallpaper[]): string {
     pad(`blur <${common('blur').min}-${common('blur').max}>`, 'how far the panels blur the wallpaper'),
     pad(`dim <${common('dim').min}-${common('dim').max}>`, 'how much the wallpaper is darkened'),
     pad('colors on|off', 'repaint the app in the wallpaper\'s colors, or keep its own'),
-    pad('fps on|off', 'show the frame rate of a wallpaper played on the GPU'),
   )
   for (const w of all) {
     const own = ownOf(w)

@@ -84,11 +84,10 @@ export const blackhole: Wallpaper = Object.freeze<Wallpaper>({
     }
   },
   moves: s => motionOf(s) !== 'off',
-  // The shader's five numbers, each inside the range its `values` declares.
+  // The shader's four numbers, each inside the range its `values` declares.
   values: s => ({
     dim: Math.round(dimOf(s)) / 100,
     speed: motionOf(s) === 'light' ? 0.5 : 1,
-    fps: s && typeof s === 'object' && s.fps === true ? 1 : 0,
     calm: own(s).calm === true ? 1 : 0,
     size: SIZE_VALUE[sizeOf(s)],
   }),
