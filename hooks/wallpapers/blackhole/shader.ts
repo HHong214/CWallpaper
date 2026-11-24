@@ -3,9 +3,11 @@
 // A broad disc round a black hole, seen level from TILT degrees above its plane; the tilt swings slowly
 // between 30 and 6 degrees and back over 60 seconds of the flow's clock. No light is traced: the parts
 // are painted back to front, the far half of the disc, the far jet, the black circle with its thin
-// bright ring, the near half of the disc, the near jet, and sparks. At the high angle the circle is
-// whole, the disc a broad ellipse round it; at the low angle the disc is a thin bright line whose near
-// half crosses the circle's lower half, with long jets up and down.
+// bright ring, the near half of the disc, the near jet, and sparks. At the high angle the circle and its
+// ring are drawn over the near half of the disc, so the circle is whole, the disc a broad ellipse round
+// it; as the view goes low the near half fades in over them (between COVER_HI and COVER_LO degrees),
+// and at the low angle the disc is a thin bright line whose near half crosses the circle's lower half,
+// with long jets up and down.
 //
 // Passes, in order:
 //   state  4 texels, read back each frame: the geometry the picture is drawn with (latched), the
@@ -66,7 +68,7 @@ const TOP_LEVEL = 11 // '@'
 // ---------------------------------------------------------------- the hole, the disc, the jets
 
 const BC = 5.196152 // R in the disc's own unit (the disc's radius lane counts in R / BC)
-const D_IN = 1.25 // the disc's inner edge, in R (it hugs the hole: its near side dips over the circle's lowest part) ...
+const D_IN = 1.25 // the disc's inner edge, in R (it hugs the hole) ...
 const D_OUT = 4.2 // ... and its outer edge (never past 0.546 W, inside the chat column)
 const RING_OUT = 1.15 // the thin ring, from R out to this many R
 const DOP = 0.3 // how much brighter the side coming towards us is (the side with x < cx)
@@ -82,6 +84,10 @@ const JET_N = 2 // ... and this many pass a spot in a clock period (outward)
 const TILT_MID = 18
 const TILT_SWING = 12
 const SWING_N = 20 // clock periods a swing (60 seconds)
+// the near half of the disc crosses the circle and its ring only as the view goes low: hidden behind them
+// at this tilt and above, fading in to whole at COVER_LO and below (as sines of the tilt: 20 and 12 degrees)
+const COVER_HI = 0.342
+const COVER_LO = 0.2079
 
 // ---------------------------------------------------------------- the flow
 
@@ -327,9 +333,11 @@ const geo: Buf = buffer({ scale: 1 / CELL_W, float: 32, filter: 'nearest' }, p =
   const dq = floor(hash3(col, row, 3) * 16)
   const lean = min(sqrt(0.5 / sT), 2.2)
   const ringFade = 0.15 + 0.85 * smoothstep(0.12, 0.45, sT)
+  // how far the near half of the disc is in front of the circle and its ring (0 high, 1 low)
+  const cover = smoothstep(COVER_HI, COVER_LO, sT)
 
-  // six points of the cell, painted back to front: the far half of the disc, the black circle, its ring,
-  // the near half of the disc
+  // six points of the cell, painted back to front: the far half of the disc, the near half outside the
+  // circle and its ring, the black circle, its ring, and the near half over them as the view goes low
   let sum = 0
   let best = 0
   let sumR = 0
@@ -347,29 +355,36 @@ const geo: Buf = buffer({ scale: 1 / CELL_W, float: 32, filter: 'nearest' }, p =
       const d = sqrt(dx * dx + dy * dy)
       const inDisc = rho >= rin && rho <= rout
       const near = inDisc && Y < 0
-      const onRing = !near && d >= R && d < RING_OUT * R
-      const seen = near || (inDisc && d >= RING_OUT * R)
-      let e = 0
-      if (seen) {
+      const overHole = d < RING_OUT * R
+      // the disc's share of the point: the far half and the near half outside the circle and its ring
+      // whole, the near half over them as far as it covers them, the far half there none
+      const wDisc = inDisc ? (overHole ? (near ? cover : 0) : 1) : 0
+      // the ring's share: whole, less what the near half of the disc covers
+      const wRing = d >= R && overHole ? (near ? 1 - cover : 1) : 0
+      let eD = 0
+      let eR = 0
+      if (wDisc > 0) {
         // the disc: brightest at its inner edge, and on the side coming towards us
         const u = (rho - rin) / (rout - rin)
         const dop = clamp(1 - DOP * (dx / max(rho, 1)) * cT * sqrt(rin / max(rho, 1)), 0.3, 1.7)
         // seen nearer edge-on, the disc's light is packed into a thinner band, so it is the brighter
-        e = discGlow(u) * (0.35 + 0.65 * dop * dop) * lean
-        sumR = sumR + (e * rho) / m
-        sumC = sumC + (e * dx) / max(rho, 1)
-        sumS = sumS + (e * Y) / max(rho, 1)
-        nearSum = nearSum + (near ? e : 0)
-      } else if (onRing) {
+        eD = wDisc * discGlow(u) * (0.35 + 0.65 * dop * dop) * lean
+        sumR = sumR + (eD * rho) / m
+        sumC = sumC + (eD * dx) / max(rho, 1)
+        sumS = sumS + (eD * Y) / max(rho, 1)
+        nearSum = nearSum + (near ? eD : 0)
+      }
+      if (wRing > 0) {
         // the thin ring: bright all round, a little brighter on the side coming towards us, and fainter
         // as the view turns edge-on (where the disc's own line is the bright thing)
-        e = 1.25 * (0.9 - 0.15 * (dx / max(d, 1)) * cT) * ringFade
-        ringSum = ringSum + e
+        eR = wRing * 1.25 * (0.9 - 0.15 * (dx / max(d, 1)) * cT) * ringFade
+        ringSum = ringSum + eR
       }
+      const e = eD + eR
       sum = sum + e
       if (e > best) {
         best = e
-        order = onRing ? 0 : near ? 2 : 1
+        order = eR > eD ? 0 : near ? 2 : 1
       }
     }
   }
