@@ -22,6 +22,18 @@
 //     the same over 60 frames                                                       (today 8,176)
 //     `size` eased from 1 to 1.25 over 30 frames on an 800x500 window               (today 4,026)
 // The numbers each prints today are in its failure message and in the console line of the run.
+//
+// V5.1, B: a window drag as the app does it. The five runs above keep the pixel count fixed while the window changes, which the app
+// does not do. Two more runs let the pixel count follow the window (kit `drive({ followPixels: true })`: setWindow also writes r.w, r.h
+// and the stand-in's res beside r.pw, r.ph and size, so each frame's picture is the size of that frame's window, one pixel to the point):
+//     640x400 to 720x450 over 30 frames, and 720x450 to 600x380 over 25 frames,
+// each settled first (60 frames at the start window) and run on 90 frames past the end as the others. The picture changes size, so the
+// estimator reads a part every frame has, TWICE in the same run: its lower-left 600 by 380 points (columns 0 to 599, the 380 rows up from the
+// bottom of each frame) and its top-left 600 by 380 (columns 0 to 599, the 380 rows down from the top of each frame), each as a 600 by 380
+// picture. worstArea under 2,500 on both. The picture is anchored to the window's bottom-left, so when the window's height changes it stays put
+// in the bottom-anchored view and slides in the top-anchored one (how a detector counting pixels from the top sees a drag of the bottom
+// edge); a sliding picture of fine characters makes every spot swing, so the top-left reading is the hard one. The reviewer's own script gave 2,449 and 3,484 (and rising over
+// three rounds); the numbers this one gives today are in the console line and the failure message.
 // The window is changed between frames through the Renderer's public fields (see blackhole-kit.mjs, which also
 // says why `res` stays at the largest window and what that does to an area measured in samples).
 //
@@ -36,6 +48,46 @@ const T0 = 60
 const TIMEOUT = 20 * 60 * 1000
 const LIMIT = 2500
 const lerp = (a, b, t) => a + (b - a) * t
+const PART = [600, 380] // the lower-left part every frame has, in points
+
+/** One run with the pixel count following the window; two flashMeters read the lower-left and the top-left 600 by 380 points of each frame. Gives { bottom, top } reports. */
+async function flashFollowing({ start, end, n }) {
+  const { flashMeter } = await import('../flash.mjs')
+  const meters = { bottom: flashMeter({ width: PART[0], height: PART[1], fps: FPS, pointsPerSample: 1 }), top: flashMeter({ width: PART[0], height: PART[1], fps: FPS, pointsPerSample: 1 }) }
+  const began = performance.now()
+  const bad = await drive({
+    res: start,
+    points: start,
+    composer: PROMPT,
+    frames: T0 + n + 90,
+    draw: f => f >= T0,
+    followPixels: true,
+    tweak: (f, api) => {
+      if (f < T0) return
+      const t = Math.min(f - T0 + 1, n) / n
+      api.setWindow([Math.round(lerp(start[0], end[0], t)), Math.round(lerp(start[1], end[1], t))])
+    },
+    onFrame: (_f, pic, r) => {
+      const lum = r.luminance(pic) // r.w by r.h of this frame's window, top row first
+      for (const [name, first] of [['bottom', r.h - PART[1]], ['top', 0]]) {
+        // row y of the part (from the part's top): the bottom part's last row is the frame's bottom row; the top part's first row is the frame's top row
+        const crop = new Float32Array(PART[0] * PART[1])
+        for (let y = 0; y < PART[1]; y++) {
+          const src = (first + y) * r.w
+          crop.set(lum.subarray(src, src + PART[0]), y * PART[0])
+        }
+        meters[name].add(crop)
+      }
+    },
+  })
+  assert.equal(bad, 0, 'the preview drew non-finite values as 0')
+  const reports = { bottom: meters.bottom.report(), top: meters.top.report() }
+  console.log(
+    `${((performance.now() - began) / 1000).toFixed(0)} s: lower-left worstArea ${reports.bottom.worstArea} (flashingSamples ${reports.bottom.flashingSamples}, maxSwingsPerSecond ${reports.bottom.maxSwingsPerSecond}), ` +
+      `top-left worstArea ${reports.top.worstArea} (flashingSamples ${reports.top.flashingSamples}, maxSwingsPerSecond ${reports.top.maxSwingsPerSecond}, worstWindow ${JSON.stringify(reports.top.worstWindow)})`,
+  )
+  return reports
+}
 
 async function flashOf({ res, start, end, n }) {
   const { flashMeter } = await import('../flash.mjs')
@@ -87,6 +139,16 @@ describe('the black hole against the flash estimator while its geometry changes 
     it(`${name}: worstArea is under 2,500`, { timeout: TIMEOUT }, async () => {
       const report = await flashOf(c)
       assert.ok(report.worstArea < LIMIT, `worstArea ${report.worstArea} (limit ${LIMIT}), flashingSamples ${report.flashingSamples}`)
+    })
+  }
+  for (const [name, c] of [
+    ['a window dragged 640x400 to 720x450 over 30 frames with the pixel count following it', { start: [640, 400], end: [720, 450], n: 30 }],
+    ['a window dragged 720x450 to 600x380 over 25 frames with the pixel count following it', { start: [720, 450], end: [600, 380], n: 25 }],
+  ]) {
+    it(`${name}: worstArea is under 2,500 over its lower-left and over its top-left 600 by 380 points`, { timeout: TIMEOUT }, async () => {
+      const r = await flashFollowing(c)
+      const msg = `worstArea lower-left ${r.bottom.worstArea}, top-left ${r.top.worstArea} (limit ${LIMIT}); flashingSamples ${r.bottom.flashingSamples} and ${r.top.flashingSamples}`
+      assert.ok(r.bottom.worstArea < LIMIT && r.top.worstArea < LIMIT, msg)
     })
   }
 })

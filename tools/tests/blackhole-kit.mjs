@@ -181,6 +181,9 @@ export function findBuffers(r) {
 /**
  * Runs the shader frame by frame.
  *   res, points, composer, values: as the Renderer takes them (values over BASE); shader: a shader file (default the one under hooks/)
+ *   followPixels: false (the default) keeps `res` as it was when the window changes (setWindow moves the points only); true makes
+ *     setWindow also set the pixel count to the window's (writes r.w, r.h and the stand-in's res beside r.pw, r.ph and size), so the
+ *     picture's samples change shape with the window: a frame's luminance is then w by h of that frame's window
  *   frames: how many frames to run (0 to frames - 1)
  *   draw(f): whether frame f's picture is wanted (undrawn frames are only stepped, which is cheap)
  *   tweak(f, api): called before frame f; api = { setWindow([pw, ph]), setComposer([l, b, r, t]), setValues(obj), setFps(n),
@@ -188,7 +191,7 @@ export function findBuffers(r) {
  *   onFrame(f, pic, r): called for each drawn frame with the premultiplied picture (y up) and the renderer
  * Returns the renderer's count of non-finite values.
  */
-export async function drive({ res, points = res, composer = PROMPT, values = {}, frames, draw, tweak, onFrame, fps, shader: shaderFile = SHADER }) {
+export async function drive({ res, points = res, composer = PROMPT, values = {}, frames, draw, tweak, onFrame, fps, shader: shaderFile = SHADER, followPixels = false }) {
   const shader = await loadShader(shaderFile)
   const r = new Renderer(shader, { res, points, composer, values: { ...BASE, ...values }, fps })
   const api = {
@@ -196,6 +199,12 @@ export async function drive({ res, points = res, composer = PROMPT, values = {},
       r.pw = pw
       r.ph = ph
       S.setVec(S.size, pw, ph)
+      if (followPixels) {
+        // as the app does it: the pixel count follows the window (one pixel to the point here), so the picture's array changes size
+        r.w = pw
+        r.h = ph
+        S.setVec(S.res, pw, ph)
+      }
     },
     setComposer: c => S.setVec(S.composer, ...c),
     setValues: v => {

@@ -9,8 +9,9 @@
 //   1. Level at both: |phi| <= 4 degrees (kit `rollDegrees`: the principal axis of the light over the disc's box).
 //   2. The swing: outside the jets' strip (|x - cx| > 0.5 R) the lit picture is between 0.40 and 0.60 as high as it is wide at high, and
 //      between 0.04 and 0.22 at low (kit `spreadRatio`: the weighted standard deviation of y over that of x).
-//   3. A whole black circle at high (changed 2026-11-24: the disc now starts at 1.25 R and its near side dips over the circle's lowest part): over
-//      the part of r < 0.8 R that lies above the line 0.45 R below the centre the mean red lane is under 0.012 and the blue under 0.018; a ring
+//   3. A whole black circle at high (v5.1, 2026-11-24: the black circle and its ring are drawn over the near disc while the camera is high; v5 had
+//      excused the part of the circle below the line 0.45 R below the centre): over the whole of r < 0.8 R the mean red lane is under 0.012
+//      and the blue under 0.018; a ring
 //      all round: in each of twelve 30 degree sectors of the annulus 0.95 R to 1.25 R at least 20% of the samples are lit; and no gap at the
 //      sides: in the two boxes from 1.2 R to 1.7 R left and right of the centre, 0.1 R above and below the horizontal through it, at least
 //      half of the cells (6 by 10 points; a cell is lit when any of its samples is) are lit (kit `sideBoxCells`).
@@ -113,12 +114,12 @@ describe('the view (contract v5, items 1, 2, 6, 9)', () => {
 })
 
 describe('the hole (contract v5, items 3 and 4)', () => {
-  it('3. is a black circle with a ring all round and no gap at the sides at high: the part of r < 0.8 R above 0.45 R below the centre is black, every 30 degree sector of 0.95 R to 1.25 R is 20% lit, half the cells of the side boxes are lit', { timeout: 300000 }, async () => {
+  it('3. is a whole black circle with a ring all round and no gap at the sides at high: all of r < 0.8 R is black, every 30 degree sector of 0.95 R to 1.25 R is 20% lit, half the cells of the side boxes are lit', { timeout: 300000 }, async () => {
     const s = await frames()
-    const inside = lanesOver(s.shots[HIGH].pic, w, h, g, (dx, dy) => Math.hypot(dx, dy) < 0.8 * g.R && dy > -0.45 * g.R)
+    const inside = lanesOver(s.shots[HIGH].pic, w, h, g, (dx, dy) => Math.hypot(dx, dy) < 0.8 * g.R)
     const sides = sideBoxCells(s.shots[HIGH].lum, w, h, g)
     const ring = ringSectors(s.shots[HIGH].lum, w, h, g)
-    const msg = `over the part of r < 0.8 R above 0.45 R below the centre the mean red is ${f4(inside.red)} (needs under 0.012) and blue ${f4(inside.blue)} (needs under 0.018); the weakest of the twelve ring sectors is ${(100 * ring.min).toFixed(0)}% lit (needs 20%): ${ring.fractions.map(v => (100 * v).toFixed(0)).join(' ')}; the side boxes hold ${sides.left.lit} of ${sides.left.n} cells lit on the left and ${sides.right.lit} of ${sides.right.n} on the right (needs half of each)`
+    const msg = `over the whole of r < 0.8 R the mean red is ${f4(inside.red)} (needs under 0.012) and blue ${f4(inside.blue)} (needs under 0.018); the weakest of the twelve ring sectors is ${(100 * ring.min).toFixed(0)}% lit (needs 20%): ${ring.fractions.map(v => (100 * v).toFixed(0)).join(' ')}; the side boxes hold ${sides.left.lit} of ${sides.left.n} cells lit on the left and ${sides.right.lit} of ${sides.right.n} on the right (needs half of each)`
     assert.ok(inside.red < 0.012 && inside.blue < 0.018, msg)
     assert.ok(ring.min >= 0.2, msg)
     assert.ok(sides.left.n > 0 && sides.right.n > 0 && sides.left.lit >= 0.5 * sides.left.n && sides.right.lit >= 0.5 * sides.right.n, msg)
