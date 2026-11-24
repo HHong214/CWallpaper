@@ -17,13 +17,16 @@
 //   lanes: spread 0.672 (item 3)
 //   glyph changes: 55.1% of the lit cells change their glyph at least once, the most any makes in a second is 2 (item 4)
 //   stray cells lit (brightness drawn 0.15 or more) on frames 60, 90, 120, 150: 10, 10, 10, 9 (item 5)
-// THE WORKING TREE's shader when these were written (candidate B), and what each test below gives on it:
-//   1. M = 0.392 against the threshold 0.850: FAILS
-//   2. the commonest glyph holds 54.7% (needs 45% or less), 3 glyphs hold 4% or more each (needs 5): FAILS
-//   3. lanes spread 0.861 (needs 0.6): PASSES (the working tree's brightness by angle is as varied as the old one's; the test
-//      guards a lane structure that must not be lost while the glyphs are fixed)
-//   4. 0% of the lit cells change their glyph (needs 25%), none changes more than twice a second: FAILS (the first part)
-//   5. stray cells lit on frames 60, 90, 120, 150: 19, 20, 21, 19 against 40: FAILS
+// THE PRESENT SHADER (the v4 look at HEAD 6fd7e40, 2026-11-24) gives on this run: M 0.626 (needs 0.6), 713 lit cells with the commonest glyph at
+// 20.2% and 7 glyphs at 4% or more, lanes spread 1.078, 71.2% of the lit cells changing glyph with at most 2 changes in a second, and
+// 135, 134, 134, 126 lit cells of kind bit 8 or 16 on frames 60, 90, 120, 150: all five PASS today. They are kept guards (contract v5
+// item 13): the new look must not lose the motion and the texture the v4 look has.
+//
+// CONTRACT v5 (2026-11-24), item 13: these are v4's items 10 to 13 as they are (the change half a second apart, the glyph variety, the
+// lanes, a quarter of the lit disc cells changing glyph and none more than twice a second). Item 14, the falling matter, becomes: 40 or
+// more lit cells of kind spark or jet on each of frames 60, 90, 120 and 150 (geo.w: order + 4 ring + 8 spark + 16 jet + 32 dither; lit
+// is a brightness drawn, flow.y, of 0.15 or more). The "half the committed shader's count" part is gone. The present shader's kind
+// bits 8 and 16 are the old stray colours (teal and violet), so its counts here are of those.
 //
 // WHAT IS PINNED
 //   1. Motion you can see. M = (the mean over frames 60 to 149 of the mean over the disc's box of |L(t + 15 frames) - L(t)|, L the
@@ -35,9 +38,8 @@
 //      bins at frame 90: (the 90th percentile of the bins' means minus the 10th) divided by the mean of the bins is 0.6 or more.
 //   4. The glyphs follow the motion. Over frames 60 to 164 at least 25% of the lit cells that see the disc (lit at frame 90)
 //      change their glyph at least once, and none changes more than twice in any 30 consecutive frames (the flicker rule).
-//   5. Falling matter you can see. The cells of kind stray (geo.w, floor(w / 8) mod 4 above 0) whose brightness drawn is 0.15 or
-//      more, counted over the whole window on each of frames 60, 90, 120 and 150: each count is at least
-//      max(half the committed shader's count on the same frame, 40), that is 40.
+//   5. Sparks and jets you can see. The cells of kind spark or jet (geo.w, floor(w / 8) mod 4 above 0) whose brightness drawn is
+//      0.15 or more, counted over the whole window on each of frames 60, 90, 120 and 150: each count is 40 or more.
 //
 // The tests assume the glyph is flow.x mod 64 and the stray kind is geo.w's bits 8 and 16, as both shaders pack them (the
 // contract lists these lanes).
@@ -46,7 +48,6 @@ import { describe, it } from 'node:test'
 import { visibleMetrics } from './blackhole-kit.mjs'
 
 const M_OLD = 0.5665
-const STRAY_OLD = { 60: 10, 90: 10, 120: 10, 150: 9 }
 
 let run = null
 const measured = () => (run ??= visibleMetrics())
@@ -74,11 +75,11 @@ describe('the black hole shows its motion and its texture (visible to the eye)',
     assert.ok(m.changed >= 0.25, msg)
     assert.ok(m.mostIn1s <= 2, msg)
   })
-  it('5. the falling matter can be seen: 40 or more stray cells lit (brightness 0.15 or more), and half the old count, on each of frames 60, 90, 120, 150', { timeout: 300000 }, async () => {
+  it('5. the sparks and jets can be seen: 40 or more cells of kind spark or jet lit (brightness 0.15 or more) on each of frames 60, 90, 120, 150', { timeout: 300000 }, async () => {
     const m = await measured()
-    const counts = Object.entries(m.strays).map(([f, n]) => `${f}: ${n} (needs ${Math.max(0.5 * STRAY_OLD[f], 40)}, old ${STRAY_OLD[f]})`)
+    const counts = Object.entries(m.strays).map(([f, n]) => `${f}: ${n}`)
     for (const f of [60, 90, 120, 150]) {
-      assert.ok(m.strays[f] >= Math.max(0.5 * STRAY_OLD[f], 40), `lit stray cells by frame, ${counts.join('; ')}`)
+      assert.ok(m.strays[f] >= 40, `lit spark and jet cells by frame (needs 40 on each), ${counts.join('; ')}`)
     }
   })
 })

@@ -18,12 +18,16 @@
 // (a quarter of the 10,000 limit). The luminance of every frame is the tool's own (`Renderer.luminance`: the
 // picture over the preview's dark ground). The estimator is tools/flash.mjs, `flashMeter(options)` with
 // { width, height, fps: 30, pointsPerSample: 1 }, `add(frame)` for each frame and `report()` at the end.
-// The prompt box is the preview's default (0.2, 0.05, 0.8, 0.15) and `dim` 0, `fps` 0, `size` 1.
+// The prompt box is the preview's default (0.2, 0.05, 0.8, 0.15) and `dim` 0, `size` 1 (contract v5: there is no `fps` value).
+//
+// A fourth test, from the contract v5's kept limits: the same estimate over 6 seconds in the middle of the swing between the two
+// angles, frames 360 to 539 on 800 by 600 (the first 360 frames stepped, not drawn), where the angle changes fastest: worstArea under
+// 2,500. It adds about 20 seconds with the present shader (measured: 21 s, worstArea 107).
 //
 // A third test, from the contract's `calm` line ("the flash estimate at 1 is no higher than at 0"), runs the
 // 800 by 600 window again at calm 1 and asks that its worstArea is no higher than the calm 0 run's.
 //
-// Why it fails now: tools/flash.mjs and the shader do not exist (each is imported inside the test).
+// Where it stands: these are kept limits; the numbers each gives are in its console line and failure message.
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -39,8 +43,8 @@ const LIMIT = 2500
 
 const runs = new Map()
 /** Renders `SECONDS` seconds of the shader on a window of points, and gives back flashMeter's report. */
-function flashOf(points, calm) {
-  const key = `${points.join('x')}-calm${calm}`
+function flashOf(points, calm, from = 0) {
+  const key = `${points.join('x')}-calm${calm}-from${from}`
   if (!runs.has(key)) {
     runs.set(
       key,
@@ -51,18 +55,18 @@ function flashOf(points, calm) {
           res: points,
           points,
           composer: [0.2, 0.05, 0.8, 0.15],
-          values: { dim: 0, speed: 1, fps: 0, calm, size: 1 },
+          values: { dim: 0, speed: 1, calm, size: 1 },
           fps: FPS,
         })
         const meter = flashMeter({ width: points[0], height: points[1], fps: FPS, pointsPerSample: 1 })
         const began = performance.now()
-        for (let f = 0; f < FPS * SECONDS; f++) {
-          const { pic } = r.runFrame(f, true)
-          meter.add(r.luminance(pic))
+        for (let f = 0; f < from + FPS * SECONDS; f++) {
+          const { pic } = r.runFrame(f, f >= from)
+          if (pic) meter.add(r.luminance(pic))
         }
         const report = meter.report()
         console.log(
-          `black hole ${points.join('x')} calm ${calm}: ${((performance.now() - began) / 1000).toFixed(0)} s, ` +
+          `black hole ${points.join('x')} calm ${calm} from frame ${from}: ${((performance.now() - began) / 1000).toFixed(0)} s, ` +
             `worstArea ${report.worstArea}, flashingSamples ${report.flashingSamples}, ` +
             `maxSwingsPerSecond ${report.maxSwingsPerSecond}, worstWindow ${JSON.stringify(report.worstWindow)}`,
         )
@@ -81,6 +85,10 @@ describe('the black hole against the flash estimator (slow)', () => {
   })
   it('on a window of 800 by 600 points: worstArea is under 2,500', { timeout: TIMEOUT }, async () => {
     const report = await flashOf([800, 600], 0)
+    assert.ok(report.worstArea < LIMIT, `worstArea ${report.worstArea} (limit ${LIMIT})`)
+  })
+  it('in the middle of the swing (frames 360 to 539) on 800 by 600: worstArea is under 2,500', { timeout: TIMEOUT }, async () => {
+    const report = await flashOf([800, 600], 0, 360)
     assert.ok(report.worstArea < LIMIT, `worstArea ${report.worstArea} (limit ${LIMIT})`)
   })
   it('calm 1 flashes no more than calm 0 on 800 by 600', { timeout: TIMEOUT }, async () => {

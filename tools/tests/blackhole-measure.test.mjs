@@ -5,8 +5,8 @@
 // Run: node --test tools/tests/
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { bestLag, circularShift, inwardLead, median, sectorTravel, turnRates } from './blackhole-motion.mjs'
-import { geometry, GROUND_LUM, measureShadow, placeProblem, PROMPT, toUV } from './blackhole-kit.mjs'
+import { bestLag, circularShift, inwardLead, median, sectorTravel, streamLead, turnRates } from './blackhole-motion.mjs'
+import { geometry, GROUND_LUM, measureShadow, placeProblem, PROMPT, spreadRatio, toUV } from './blackhole-kit.mjs'
 
 const TWO_PI = 2 * Math.PI
 const FPS = 30
@@ -172,5 +172,69 @@ describe('measureShadow (the kit) on a made-up picture with a band across the lo
   it('a picture whose middle is lit gives null', () => {
     const lum = new Float32Array(points[0] * points[1]).fill(GROUND_LUM + 0.3)
     assert.equal(measureShadow(lum, points[0], points[1], g), null)
+  })
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Contract v5: the swing measure (item 2) and the jet-stream measure (item 12), on made-up fields.
+
+describe('spreadRatio (kit, item 2) on a made-up disc', () => {
+  const points = [800, 500]
+  const [w, h] = points
+  const g = geometry(points, PROMPT)
+  /** A uniform lit ellipse (4.2 R across, sin(tilt) as high) with a black hole of radius R, and optionally a jet: a lit strip 0.2 R wide, 3.3 R up and down. */
+  function disc(tiltDeg, jets) {
+    const lum = new Float32Array(w * h).fill(GROUND_LUM)
+    const a = 4.2 * g.R
+    const b = a * Math.sin((tiltDeg * Math.PI) / 180)
+    for (let j = 0; j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        const dx = i + 0.5 - g.cx
+        const dy = j + 0.5 - g.cy
+        let v = GROUND_LUM
+        if ((dx / a) ** 2 + (dy / b) ** 2 <= 1 && Math.hypot(dx, dy) > g.R) v = GROUND_LUM + 0.3
+        if (jets && Math.abs(dx) <= 0.1 * g.R && Math.abs(dy) <= 3.3 * g.R) v = GROUND_LUM + 0.4
+        lum[(h - 1 - j) * w + i] = v
+      }
+    }
+    return lum
+  }
+  it('an ellipse sin(30) as high as wide reads inside the contract band for the high angle (0.40 to 0.60), and one sin(6) as high inside the low band (0.04 to 0.22)', () => {
+    // the hole's removal and the strip left out make the reading a little under the axis ratio (about 0.44 for 0.5): the band's lower edge is 0.40
+    const high = spreadRatio(disc(30, false), w, h, g)
+    const low = spreadRatio(disc(6, false), w, h, g)
+    assert.ok(high.ratio > 0.40 && high.ratio < 0.60, `high ${high.ratio}`)
+    assert.ok(low.ratio > 0.04 && low.ratio < 0.22, `low ${low.ratio}`)
+    assert.ok(high.n > 1000 && low.n > 500)
+  })
+  it('the jets (inside the strip |x - cx| <= 0.5 R) do not change it', () => {
+    const plain = spreadRatio(disc(30, false), w, h, g).ratio
+    const withJets = spreadRatio(disc(30, true), w, h, g).ratio
+    assert.ok(Math.abs(plain - withJets) < 0.005, `${plain} against ${withJets}`)
+  })
+  it('a steeper ellipse reads higher and a flat line reads nearly 0', () => {
+    assert.ok(spreadRatio(disc(60, false), w, h, g).ratio > 0.7)
+    assert.ok(spreadRatio(disc(1, false), w, h, g).ratio < 0.03)
+  })
+})
+
+describe('streamLead (item 12) on a made-up jet', () => {
+  const FRAMES_N = 180
+  // 600 cells up a jet, heights 0 to 300; matter streaming at 300 a second: a pattern of (height - 300 t)
+  const heights = Float32Array.from({ length: 600 }, (_, i) => (300 * i) / 600)
+  const field = v => Array.from({ length: FRAMES_N }, (_, t) => Float32Array.from(heights, hh => 0.5 + 0.5 * Math.sin((TWO_PI * (hh - v * (t / FPS))) / 600) + 0.2 * Math.sin((TWO_PI * (hh - v * (t / FPS))) / 170)))
+  it('matter streaming outward at 300 a second: the lower bin leads in every pair, by about 5 frames', () => {
+    const m = streamLead(heights, field(300))
+    assert.equal(m.pairs.length, 5)
+    assert.equal(m.lead, 1)
+    assert.ok(Math.abs(m.medianLag - 5) <= 1.2, `median lag ${m.medianLag}`)
+  })
+  it('matter falling inward has no lower-leads pair and a negative median lag; a jet that stands still does not stream', () => {
+    const inward = streamLead(heights, field(-300))
+    assert.equal(inward.lead, 0)
+    assert.ok(inward.medianLag < -3, `median lag ${inward.medianLag}`)
+    const still = streamLead(heights, field(0))
+    assert.equal(still.lead, 0)
+    assert.equal(still.medianLag, 0)
   })
 })

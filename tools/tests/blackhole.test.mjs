@@ -7,7 +7,7 @@
 // WHAT THESE TESTS EXPECT THE BUILDER TO PROVIDE
 //   hooks/wallpapers/blackhole/shader.ts   `export default shader({ fps: 30, passes: [...] })` (exactly one picture),
 //   written in the subset tools/README.md gives, so loadShader() can import it as it stands. It declares
-//     values({ dim: [0, 0.8], speed: [0, 1], fps: [0, 1], calm: [0, 1], size: [0.6, 1.4] })   five names, no more,
+//     values({ dim: [0, 0.8], speed: [0, 1], calm: [0, 1], size: [0.6, 1.4] })   four names, no more (contract v5: `fps` is gone),
 //   and in its source `const CELL_W = 6` and `const CELL_H = 10`, and a bitmap font held in a `table(...)`.
 //
 // HOW THE SHADER'S `values` ARE READ: from the stand-in. loadShader() returns `declared`, the names and ranges every
@@ -16,7 +16,7 @@
 // cannot show them.
 //
 // HOW IT IS RENDERED: every picture below is a window of points drawn at one pixel to the point (so the
-// picture's own numbers are points), `dim` 0, `speed` 1, `fps` 0, `calm` 0, `size` 1 unless a test says
+// picture's own numbers are points), `dim` 0, `speed` 1, `calm` 0, `size` 1 unless a test says
 // otherwise (a value left out would be its LOW end: size 0.6, speed 0). A window of 900 by 600 points is the
 // usual one; 480 by 320 where the position does not matter. Frames are at 1 second (frame 30) or later.
 // Each frame is read as luminance over the preview's dark ground (the tool's own `luminance()`), y up. "Excess"
@@ -39,15 +39,14 @@
 //
 // CONTRACT v2 (placement): the prompt box's top and bottom change nothing (the box grows as the owner types). The
 // centre is (left + right) / 2 across and 0.57 of the window's height up (the window's centre with no prompt box),
-// and R = size * min(clamp(0.16 W, 48, 150), 0.18 * the window's height).
+// and (contract v5) R = size * min(clamp(0.13 W, 40, 125), 0.15 * the window's height); it was 0.16 W, 48 to 150 and 0.18.
 //
-// CONTRACT v4 (the look, 2026-11-23): the tests of the dark middle with its strip, of more light above than below, and of
-// the band brighter on its left half are gone; the new look is pinned in blackhole-look.test.mjs (items 1 to 4, 8, 9),
-// blackhole-spin.test.mjs (5 to 7, SLOW) and blackhole-measure.test.mjs (their measuring functions on made-up fields).
-// The frames-a-second readout moved to the top left of the chat, at twice the size: the fps tests below read it there
-// (box x from cx - W / 2 to + 96, y from size.y - 120 to size.y - 96, 12 points either way), on an 800 by 500 window.
-// The shadow measure (kit measureShadow, used by the placement and size tests) reads the upper half of the circle only, a
-// circle fitted through four chords and the top edge, because the front band now crosses the lower half.
+// CONTRACT v5 (the look after the owner's pictures, 2026-11-24): the readout, its box and every test of it are gone with the `fps`
+// value, and so are the empty-lens-table tests and v4's items 1 to 3 (the roll, the front band over the lower shadow, the arch
+// over the top). The look is pinned in blackhole-look.test.mjs (items 1 to 9), blackhole-spin.test.mjs (10 to 12, SLOW),
+// blackhole-visible.test.mjs (13) and blackhole-measure.test.mjs (their measuring functions on made-up fields). The shadow
+// measure (kit measureShadow, used by the placement and size tests) reads the upper half of the circle only; at the high angle
+// the circle is whole, so it may stay as it is.
 //
 // Why these fail now: the shader file does not exist, so loadShader() fails to import it, in each test.
 import assert from 'node:assert/strict'
@@ -64,7 +63,7 @@ const SHADER = path.join(ROOT, 'hooks', 'wallpapers', 'blackhole', 'shader.ts')
 const BIG = [900, 600]
 const SMALL = [480, 320]
 const PROMPT = [0.2, 0.05, 0.8, 0.15] // left, bottom, right, top: the preview's default prompt box
-const BASE = { dim: 0, speed: 1, fps: 0, calm: 0, size: 1 }
+const BASE = { dim: 0, speed: 1, calm: 0, size: 1 }
 
 const lin = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
 const GROUND_LUM = 0.2126 * lin(GROUND[0] / 255) + 0.7152 * lin(GROUND[1] / 255) + 0.0722 * lin(GROUND[2] / 255)
@@ -108,7 +107,7 @@ function geometry(points, composer, sizeValue = 1) {
   const W = none ? 0.6 * sx : (rt - l) * sx
   const cx = none ? sx / 2 : ((l + rt) / 2) * sx
   const cy = none ? sy / 2 : 0.57 * sy
-  const R = sizeValue * Math.min(Math.min(Math.max(0.16 * W, 48), 150), 0.18 * sy)
+  const R = sizeValue * Math.min(Math.min(Math.max(0.13 * W, 40), 125), 0.15 * sy)
   return { W, cx, cy, R }
 }
 /** What the stand-in makes of a value: held to its range, on 10 bits of it. */
@@ -146,9 +145,9 @@ describe('the shader file', () => {
     const shader = await loadShader(SHADER)
     assert.equal(shader.fps, 30)
   })
-  it('declares five values and no more, with these ranges (read from the stand-in)', async () => {
+  it('declares four values and no more, with these ranges (read from the stand-in)', async () => {
     const shader = await loadShader(SHADER)
-    assert.deepEqual(shader.declared, { dim: [0, 0.8], speed: [0, 1], fps: [0, 1], calm: [0, 1], size: [0.6, 1.4] })
+    assert.deepEqual(shader.declared, { dim: [0, 0.8], speed: [0, 1], calm: [0, 1], size: [0.6, 1.4] })
     assert.equal(shader.passes.filter(p => p.kind === 'picture').length, 1)
   })
 })
@@ -166,15 +165,15 @@ describe('the grid', () => {
 
 describe('where it sits', () => {
   // composer is left, bottom, right, top. A window of 900 by 600 points unless a case says otherwise.
-  // v2: the centre is 0.57 of the window's height up whatever the box's top and bottom, and R is bounded by 0.18 of it.
+  // v2: the centre is 0.57 of the window's height up whatever the box's top and bottom, and R is bounded by 0.15 of it (v5).
   const cases = [
     ['a prompt box in the middle', PROMPT],
     ['a prompt box pushed left', [0.05, 0.05, 0.65, 0.15]],
     ['a prompt box pushed right', [0.35, 0.05, 0.95, 0.15]],
     ['no prompt box', [0, 0, 0, 0]],
     ['a tall prompt box (its top changes nothing)', [0.2, 0.05, 0.8, 0.55]],
-    ['a narrow prompt box (0.16 W is under 48, so 48 sets R)', [0.4, 0.05, 0.6, 0.15]],
-    ['a short window, 900 by 300 (0.18 of its height sets R)', PROMPT, [900, 300]],
+    ['a narrow prompt box (0.13 W is under 40, so 40 sets R)', [0.4, 0.05, 0.6, 0.15]],
+    ['a short window, 900 by 300 (0.15 of its height sets R)', PROMPT, [900, 300]],
   ]
   for (const [name, composer, points = BIG] of cases) {
     it(`${name}: the dark middle is at the formulas' centre and radius, and the light keeps inside 1.15 W`, async () => {
@@ -279,119 +278,6 @@ describe('the picture', () => {
     assert.ok(lit > 500, `only ${lit} lit pixels at 1 second`)
     assert.ok(moved > 100, `only ${moved} pixels differ by more than 0.01 between 1 and 2 seconds`)
     assert.ok(total / a.length > 1e-4)
-  })
-})
-
-describe('fps (contract v4: the readout is at the top left of the chat)', () => {
-  // With `fps` at 0.5 or more it reads the number, a space and FPS (for example `30 FPS`) in the font at twice the size
-  // (every dot 2 points, a character 12 points wide and 20 high). Its box is 96 points wide and 24 high; its left edge is the
-  // chat column's left edge (cx - W / 2) and its top is 96 points below the top of the window (size.y - 96), y up, so the box
-  // is x from cx - W / 2 to cx - W / 2 + 96 and y from size.y - 120 to size.y - 96. The tests allow 12 points either way. It is
-  // bright (the lit samples in it have a mean luminance of 0.25 or more at dim 0), and the box is kept clear of the picture:
-  // with `fps` under 0.5 it holds nothing lit. The old place, 96 by 24 points at the window's bottom-left corner, is not special.
-  // The window is 800 by 500 points with the standard prompt box; the readout's place is read off the picture.
-  const points = [800, 500]
-  const g = geometry(points, PROMPT)
-  const box = { x0: g.cx - g.W / 2, x1: g.cx - g.W / 2 + 96, y0: points[1] - 120, y1: points[1] - 96 }
-  const MARGIN = 12
-  /** The lit samples (excess luminance over 0.01) whose centre is in the rectangle: { n, minX, maxX, minY, maxY, mean (luminance of the lit), peak (largest excess) }. */
-  const litIn = (shot, f, x0, x1, y0, y1) => {
-    const { w, h } = shot
-    const L = shot.lums[f]
-    const out = { n: 0, minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, mean: 0, peak: 0 }
-    let sum = 0
-    for (let j = Math.max(0, Math.floor(y0)); j < Math.min(h, Math.ceil(y1)); j++) {
-      for (let i = Math.max(0, Math.floor(x0)); i < Math.min(w, Math.ceil(x1)); i++) {
-        const v = L[(h - 1 - j) * w + i]
-        const e = excess(v)
-        out.peak = Math.max(out.peak, e)
-        if (e > 0.01) {
-          out.n++
-          sum += v
-          out.minX = Math.min(out.minX, i + 0.5)
-          out.maxX = Math.max(out.maxX, i + 0.5)
-          out.minY = Math.min(out.minY, j + 0.5)
-          out.maxY = Math.max(out.maxY, j + 0.5)
-        }
-      }
-    }
-    out.mean = out.n ? sum / out.n : 0
-    return out
-  }
-  const around = (shot, f) => litIn(shot, f, box.x0 - MARGIN, box.x1 + MARGIN, box.y0 - MARGIN, box.y1 + MARGIN)
-  const where = s => (s.n ? `x ${s.minX} to ${s.maxX}, y ${s.minY} to ${s.maxY}` : 'nowhere')
-  const oldCorner = (shot, f) => litIn(shot, f, 0, 96, 0, 24)
-  const ask = values => render({ points, composer: PROMPT, values })
-
-  it('at 1 the readout sits at the top left of the chat: lit samples with their extent inside the box, 12 points either way', async () => {
-    const shot = await ask({ fps: 1 })
-    const s = around(shot, 30)
-    const msg = `the box is x ${box.x0.toFixed(0)} to ${box.x1.toFixed(0)}, y ${box.y0} to ${box.y1}: ${s.n} lit samples there (needs 150 or more); the old corner (bottom left) holds ${oldCorner(shot, 30).n}`
-    assert.ok(s.n >= 150, msg)
-    assert.ok(s.minX >= box.x0 - MARGIN && s.maxX <= box.x1 + MARGIN && s.minY >= box.y0 - MARGIN && s.maxY <= box.y1 + MARGIN, `${msg}: the lit samples are ${where(s)}`)
-  })
-  it('it is at twice the font size: the lit samples span 12 to 20 points up and 50 to 96 across (a character is 12 by 20, dots of 2)', async () => {
-    const shot = await ask({ fps: 1 })
-    const s = around(shot, 30)
-    assert.ok(s.n >= 150, `${s.n} lit samples round the box (the old corner holds ${oldCorner(shot, 30).n})`)
-    const up = s.maxY - s.minY + 1
-    const across = s.maxX - s.minX + 1
-    assert.ok(up >= 12 && up <= 20 && across >= 50 && across <= 96, `the lit samples span ${up} up and ${across} across`)
-  })
-  it('it is bright: the lit samples in the box have a mean luminance of 0.25 or more', async () => {
-    const shot = await ask({ fps: 1 })
-    const s = around(shot, 30)
-    assert.ok(s.n >= 150 && s.mean >= 0.25, `${s.n} lit samples round the box with a mean luminance of ${s.mean.toFixed(3)} (needs 0.25)`)
-  })
-  it('at 0 the box holds nothing lit, the picture included', async () => {
-    const shot = await ask({ fps: 0 })
-    const s = litIn(shot, 30, box.x0, box.x1, box.y0, box.y1)
-    assert.ok(s.peak < 0.002, `${s.n} lit samples in the box with fps 0, the largest excess ${s.peak.toFixed(4)} (${where(s)})`)
-  })
-  it('0.5 draws and 0.49 does not (the switch is at 0.5)', async () => {
-    const on = around(await ask({ fps: 0.5 }), 30)
-    const off = litIn(await ask({ fps: 0.49 }), 30, box.x0, box.x1, box.y0, box.y1)
-    assert.ok(on.n >= 150, `at 0.5 the box round the readout holds ${on.n} lit samples`)
-    assert.ok(off.peak < 0.002, `at 0.49 the box holds lit samples (largest excess ${off.peak.toFixed(4)})`)
-  })
-  it('the old place is no longer special: at 1 the bottom-left 96 by 24 points hold nothing lit', async () => {
-    const shot = await ask({ fps: 1 })
-    const s = oldCorner(shot, 30)
-    assert.ok(s.peak < 0.002, `the old corner holds ${s.n} lit samples (${where(s)}) at fps 1`)
-  })
-  it('the counter changes nothing outside its box (12 points either way)', async () => {
-    const on = await ask({ fps: 1 })
-    const off = await ask({ fps: 0 })
-    const { w, h } = on
-    let worst = 0
-    let at = ''
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        if (x + 0.5 >= box.x0 - MARGIN && x + 0.5 < box.x1 + MARGIN && y + 0.5 >= box.y0 - MARGIN && y + 0.5 < box.y1 + MARGIN) continue
-        for (let k = 0; k < 4; k++) {
-          const d = Math.abs(on.pics[30][(y * w + x) * 4 + k] - off.pics[30][(y * w + x) * 4 + k])
-          if (d > worst) {
-            worst = d
-            at = `(${x}, ${y})`
-          }
-        }
-      }
-    }
-    assert.ok(worst < 1e-6, `a pixel outside the box differs by ${worst} at ${at}`)
-  })
-  it('it shows the measured rate: the box at 60 frames a second is not the box at 30', async () => {
-    const at30 = await render({ points, composer: PROMPT, values: { fps: 1 }, frames: [30], fps: 30 })
-    const at60 = await render({ points, composer: PROMPT, values: { fps: 1 }, frames: [60], fps: 60 })
-    const { w } = at30
-    let diff = 0
-    for (let y = Math.floor(box.y0 - MARGIN); y < box.y1 + MARGIN; y++) {
-      for (let x = Math.floor(box.x0 - MARGIN); x < box.x1 + MARGIN; x++) {
-        const i = (y * w + x) * 4
-        for (let k = 0; k < 4; k++) diff = Math.max(diff, Math.abs(at30.pics[30][i + k] - at60.pics[60][i + k]))
-      }
-    }
-    assert.ok(around(at60, 60).n >= 150, `at 60 frames a second the box round the readout holds ${around(at60, 60).n} lit samples`)
-    assert.ok(diff > 0.05, 'the digits are the same at 30 and at 60 frames a second')
   })
 })
 

@@ -204,3 +204,20 @@ export function inwardLead(cells, series, quarters = 4, bins = 5, maxLag = 30) {
   }
   return { pairs: lags, lead: lags.filter(l => l > 0.05).length / lags.length, medianLag: median(lags) }
 }
+
+/**
+ * Contract v5 item 12. `heights` is each cell's height along the jet (any unit), `series` an array (one per frame) of the cells'
+ * brightness. The cells are split by height into `bins` equal-count bins (lowest first); the brightness series of each bin (the
+ * mean over its cells); for each adjacent pair the lag at which the upper bin matches the lower one (positive: the lower leads, the
+ * matter streams outward). Gives { pairs (the lags in frames), lead (the share of pairs with the lower leading, lag above 0.05),
+ * medianLag }.
+ */
+export function streamLead(heights, series, bins = 6, maxLag = 30) {
+  const order = Array.from(heights.keys()).sort((a, b) => heights[a] - heights[b])
+  const per = Math.floor(order.length / bins)
+  const groups = Array.from({ length: bins }, (_, b) => order.slice(b * per, b === bins - 1 ? order.length : (b + 1) * per))
+  const s = groups.map(sel => series.map(f => sel.reduce((acc, i) => acc + f[i], 0) / Math.max(1, sel.length)))
+  const lags = []
+  for (let b = 0; b + 1 < bins; b++) lags.push(bestLag(s[b], s[b + 1], maxLag).lag)
+  return { pairs: lags, lead: lags.filter(l => l > 0.05).length / lags.length, medianLag: median(lags) }
+}

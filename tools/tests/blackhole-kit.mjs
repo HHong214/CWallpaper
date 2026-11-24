@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 export const SHADER = path.join(ROOT, 'hooks', 'wallpapers', 'blackhole', 'shader.ts')
 export const PROMPT = [0.2, 0.05, 0.8, 0.15]
-export const BASE = { dim: 0, speed: 1, fps: 0, calm: 0, size: 1 }
+export const BASE = { dim: 0, speed: 1, calm: 0, size: 1 } // contract v5: four values; `fps` is gone
 export const SIZE_RANGE = [0.6, 1.4]
 
 const lin = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
@@ -43,7 +43,7 @@ export function geometry(points, composer, sizeValue = 1) {
   const W = none ? 0.6 * sx : (rt - l) * sx
   const cx = none ? sx / 2 : ((l + rt) / 2) * sx
   const cy = none ? sy / 2 : 0.57 * sy
-  const R = sizeValue * Math.min(Math.min(Math.max(0.16 * W, 48), 150), 0.18 * sy)
+  const R = sizeValue * Math.min(Math.min(Math.max(0.13 * W, 40), 125), 0.15 * sy)
   return { W, cx, cy, R, size: sizeValue }
 }
 
@@ -168,12 +168,13 @@ export function placeProblem(m, g) {
   return ''
 }
 
-/** The renderer's buffers by name: lens (the `once` buffer), state (4 by 1 texels), geo, flow and look (the buffers drawn at a texel a cell, in pass order). Needs frame 0 to have run. */
+/** The renderer's buffers by name: geo, flow and look (the buffers drawn at a texel a cell, in pass order), and lens (the `once` buffer) and state (4 by 1 texels) when the shader has them. Needs frame 0 to have run. */
 export function findBuffers(r) {
   const bs = r.shader.passes.filter(b => b.kind === 'buffer' && b.data)
   const cells = bs.filter(b => b.options.scale !== undefined)
   const found = { lens: bs.find(b => b.once), state: bs.find(b => b.w === 4 && b.h === 1), geo: cells[0], flow: cells[1], look: cells[2] }
-  for (const k of Object.keys(found)) if (!found[k]) throw new Error(`blackhole-kit: no ${k} buffer found in the shader's passes`)
+  // contract v5 has no lens table (lens and state may be missing); geo and flow are the lanes the tests read
+  for (const k of ['geo', 'flow']) if (!found[k]) throw new Error(`blackhole-kit: no ${k} buffer found in the shader's passes`)
   return found
 }
 
@@ -530,3 +531,172 @@ export async function visibleMetrics(shaderFile = SHADER) {
     strays,
   }
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Contract v5 (the look after the owner's pictures): measuring a rendered frame. `lum` is the tool's luminance, top row
+// first, `pic` the premultiplied picture (y up); one pixel to the point; (cx, cy) and R are geometry()'s. "Lit" is an excess
+// luminance over the ground of more than 0.03.
+
+const LIT = 0.03
+
+/** Calls fn(i, j, x, y, excessLuminance) for every sample of the picture (centre in points, y up). */
+export function eachSample(lum, w, h, fn) {
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) fn(i, j, i + 0.5, j + 0.5, excess(lum[(h - 1 - j) * w + i]))
+}
+
+/**
+ * Item 2: how high the lit picture is against how wide. Over the lit samples with |x - cx| > 0.5 R (outside the jets' strip), the
+ * ratio of the spreads of the light: the standard deviation of y over the standard deviation of x, each weighted by the excess
+ * luminance about its own weighted mean. A uniform ellipse gives its axis ratio. Gives { ratio, n }.
+ */
+export function spreadRatio(lum, w, h, g) {
+  let sw = 0
+  let sx = 0
+  let sy = 0
+  let n = 0
+  eachSample(lum, w, h, (_i, _j, x, y, e) => {
+    if (e <= LIT || Math.abs(x - g.cx) <= 0.5 * g.R) return
+    sw += e
+    sx += e * x
+    sy += e * y
+    n++
+  })
+  if (!sw) return { ratio: NaN, n: 0 }
+  const mx = sx / sw
+  const my = sy / sw
+  let vx = 0
+  let vy = 0
+  eachSample(lum, w, h, (_i, _j, x, y, e) => {
+    if (e <= LIT || Math.abs(x - g.cx) <= 0.5 * g.R) return
+    vx += e * (x - mx) ** 2
+    vy += e * (y - my) ** 2
+  })
+  return { ratio: Math.sqrt(vy / sw) / Math.sqrt(vx / sw), n }
+}
+
+/** The mean red and blue lanes of the picture (over the preview's ground where alpha is below 1) over the samples with test(dx, dy) true, dx = x - cx, dy = y - cy. */
+export function lanesOver(pic, w, h, g, test) {
+  const red = lane(pic, 0)
+  const blue = lane(pic, 2)
+  let r = 0
+  let b = 0
+  let n = 0
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      if (!test(i + 0.5 - g.cx, j + 0.5 - g.cy)) continue
+      r += red[j * w + i]
+      b += blue[j * w + i]
+      n++
+    }
+  }
+  return { red: n ? r / n : NaN, blue: n ? b / n : NaN, n }
+}
+
+/** Item 3's ring: in each of twelve sectors of 30 degrees of the annulus 0.95 R to 1.25 R, the share of the samples that are lit. Gives { fractions, min }. */
+export function ringSectors(lum, w, h, g) {
+  const lit = new Float64Array(12)
+  const all = new Float64Array(12)
+  eachSample(lum, w, h, (_i, _j, x, y, e) => {
+    const d = Math.hypot(x - g.cx, y - g.cy) / g.R
+    if (d < 0.95 || d > 1.25) return
+    const k = Math.min(11, Math.floor((((Math.atan2(y - g.cy, x - g.cx) * 180) / Math.PI + 360) % 360) / 30))
+    all[k]++
+    if (e > LIT) lit[k]++
+  })
+  const fractions = Array.from(all, (n, k) => (n ? lit[k] / n : 0))
+  return { fractions, min: Math.min(...fractions) }
+}
+
+/**
+ * Item 4's disc across the lower half at the low angle: in the strip |x - cx| <= 0.15 R, the lit samples whose y is between 0.9 R
+ * and 0.1 R below the centre: { n, span } with the span (highest minus lowest, in R).
+ */
+export function lowerStripSpan(lum, w, h, g) {
+  let lo = Infinity
+  let hi = -Infinity
+  let n = 0
+  eachSample(lum, w, h, (_i, _j, x, y, e) => {
+    const dy = y - g.cy
+    if (e <= LIT || Math.abs(x - g.cx) > 0.15 * g.R || dy > -0.1 * g.R || dy < -0.9 * g.R) return
+    n++
+    lo = Math.min(lo, dy)
+    hi = Math.max(hi, dy)
+  })
+  return { n, span: n ? (hi - lo) / g.R : 0 }
+}
+
+/**
+ * Item 7: a jet. The lit samples in the strip |x - cx| <= 0.3 R with their height from the centre between fromR and toR (in R,
+ * positive above, negative below; the range is taken as given, from the smaller to the larger): { n, blueShare } the number, and the
+ * share of them whose blue lane is above the red.
+ */
+export function jetSamples(pic, lum, w, h, g, fromR, toR) {
+  const lo = Math.min(fromR, toR) * g.R
+  const hi = Math.max(fromR, toR) * g.R
+  const red = lane(pic, 0)
+  const blue = lane(pic, 2)
+  let n = 0
+  let bl = 0
+  eachSample(lum, w, h, (i, j, x, y, e) => {
+    const dy = y - g.cy
+    if (e <= LIT || Math.abs(x - g.cx) > 0.3 * g.R || dy < lo || dy > hi) return
+    n++
+    if (blue[j * w + i] > red[j * w + i]) bl++
+  })
+  return { n, blueShare: n ? bl / n : 0 }
+}
+
+/**
+ * Item 5: the disc's colour by radius, from the picture. `cells` is { index, radius } of the cells that see the disc (blackhole-motion
+ * discCells()), `geoW` the buffer's width in texels; the cells are split by radius into an inner and an outer third; for each third the
+ * mean luminance above the ground over the pixels of its cells (a cell is 6 by 10 points; every pixel counts, lit or not, so a cell's
+ * light is its dots' share) and the mean red and blue lanes over the lit pixels (excess over 0.03). Gives
+ * { inner: { light, red, blue }, outer: { light, red, blue } }.
+ */
+export function discColourByRadius(pic, lum, w, h, cells, geoW) {
+  const order = Array.from(cells.radius.keys()).sort((a, b) => cells.radius[a] - cells.radius[b])
+  const third = Math.floor(order.length / 3)
+  const red = lane(pic, 0)
+  const blue = lane(pic, 2)
+  const part = sel => {
+    let light = 0
+    let px = 0
+    let r = 0
+    let b = 0
+    let lit = 0
+    for (const i of sel) {
+      const t = cells.index[i]
+      const col = t % geoW
+      const row = Math.floor(t / geoW)
+      for (let j = row * 10; j < Math.min(h, row * 10 + 10); j++) {
+        for (let k = col * 6; k < Math.min(w, col * 6 + 6); k++) {
+          const e = excess(lum[(h - 1 - j) * w + k])
+          light += e
+          px++
+          if (e > LIT) {
+            r += red[j * w + k]
+            b += blue[j * w + k]
+            lit++
+          }
+        }
+      }
+    }
+    return { light: px ? light / px : 0, red: lit ? r / lit : 0, blue: lit ? b / lit : 0 }
+  }
+  return { inner: part(order.slice(0, third)), outer: part(order.slice(order.length - third)) }
+}
+
+/** The texels of the `geo` buffer by kind (geo.w: order + 4 ring + 8 spark + 16 jet + 32 dither): { sparks, jets } as arrays of texel indices (the stamp texel 0 left out). */
+export function cellKinds(geo) {
+  const sparks = []
+  const jets = []
+  for (let t = 1; t < geo.w * geo.h; t++) {
+    const code = geo.data[t * 4 + 3]
+    if (Math.floor(code / 8) % 2 === 1) sparks.push(t)
+    if (Math.floor(code / 16) % 2 === 1) jets.push(t)
+  }
+  return { sparks, jets }
+}
+
+/** The texels among `texels` that are lit now: the brightness drawn (flow.y) 0.15 or more. */
+export const litTexels = (flow, texels) => texels.filter(t => flow.data[t * 4 + 1] >= 0.15)
