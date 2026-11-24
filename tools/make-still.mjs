@@ -18,8 +18,8 @@ const OUT = path.join(ROOT, 'hooks', 'wallpapers', 'blackhole', 'still-data.ts')
 // fine a grid as keeps the SVG well under 124,000 characters), no prompt box (the moment is chosen below).
 const WIDTH = 2016
 const HEIGHT = 1260
-// The hole as large in the picture as on a 1512 by 945 window (R is held to 150 points: size makes up the rest).
-const SIZE = 1.29
+// The hole as large in the picture as on a 1512 by 945 window (R is held to 125 points: size makes up the rest).
+const SIZE = 0.94
 
 const FPS = 30
 const CELL_W = 6
@@ -27,22 +27,27 @@ const CELL_H = 10
 // The shader's glyphs 0 to 11, as characters.
 const RAMP = ' .:;tSX%8#$@'
 
-// The inks: the shader's own colour ramp (its `look` pass) at a few levels of light, then its two
-// stray colours. Each cell takes the nearest.
+// The inks: the shader's own colours (its `look` pass): the disc's heat from its white-hot inner edge to
+// its dark red rim, at full light and at half, then the ring's white-gold and the jets' blue and
+// blue-white. Each cell takes the nearest.
 const smooth = (a, b, x) => {
   const t = Math.min(Math.max((x - a) / (b - a), 0), 1)
   return t * t * (3 - 2 * t)
 }
-function ramp(t) {
-  const lvl = 0.45 + 0.55 * smooth(0, 0.35, t)
+function heat(k, lvl) {
   return [
-    (0.3 + 0.7 * smooth(0, 0.55, t)) * lvl,
-    (0.04 + 0.3 * smooth(0.2, 0.65, t) + 0.25 * smooth(0.55, 0.9, t) + 0.34 * smooth(0.85, 1.25, t)) * lvl,
-    (0.03 + 0.08 * smooth(0.4, 0.8, t) + 0.25 * smooth(0.75, 1.05, t) + 0.36 * smooth(1, 1.3, t)) * lvl,
+    (0.55 + 0.45 * smooth(0, 0.45, k) - 0.05 * smooth(0.75, 1, k)) * lvl,
+    (0.08 + 0.3 * smooth(0.15, 0.55, k) + 0.5 * smooth(0.45, 1, k)) * lvl,
+    (0.03 + 0.25 * smooth(0.3, 0.65, k) + 0.42 * smooth(0.55, 0.95, k)) * lvl,
   ]
 }
-const LEVELS = [0.12, 0.24, 0.36, 0.48, 0.6, 0.72, 0.84, 0.96, 1.08, 1.2]
-const INKS = [...LEVELS.map(ramp), [0.2, 0.74, 0.7], [0.6, 0.38, 0.92]]
+const INKS = [
+  ...[1, 0.8, 0.6, 0.4, 0.2, 0].map(k => heat(k, 1)),
+  ...[0.8, 0.4, 0.1].map(k => heat(k, 0.5)),
+  [1, 0.86, 0.62],
+  [0.26, 0.42, 0.8],
+  [0.78, 0.88, 1],
+]
 const hex = c => '#' + c.map(v => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('')
 const LETTERS = 'abcdefghijkl'
 
@@ -51,7 +56,7 @@ const r = new Renderer(shader, {
   res: [WIDTH, HEIGHT],
   points: [WIDTH, HEIGHT],
   composer: [0, 0, 0, 0],
-  values: { dim: 0, speed: 1, fps: 0, calm: 0, size: SIZE },
+  values: { dim: 0, speed: 1, calm: 0, size: SIZE },
   fps: FPS,
 })
 const at = shader.passes.findIndex(p => p.kind === 'picture')
@@ -61,11 +66,12 @@ if (!look || look.kind !== 'buffer') throw new Error('the shader has no per-cell
 const cols = Math.ceil(WIDTH / CELL_W)
 const rowsAll = Math.ceil(HEIGHT / CELL_H)
 
-// Which frame: the arcs, the hot arc on the ring and the infall move, so frames differ in how plainly they
-// show the ring round the shadow. Of the frames every half second from FIRST to LAST seconds, the one with
-// the most lit characters in the upper half of the ring's annulus (0.9 R to 1.25 R about the centre).
-const FIRST = 3
-const LAST = 9
+// Which frame: the high angle, at the start of the view's swing. The arcs, the hot arc on the ring and the
+// sparks move, so frames differ in how plainly they show the ring round the hole: of the frames every half
+// second from FIRST to LAST seconds (the picture faded in, the view still within a degree of its highest),
+// the one with the most lit characters in the upper half of the ring's annulus (0.9 R to 1.25 R).
+const FIRST = 1.5
+const LAST = 3.5
 const lit = ch => ch !== ' '
 /** The glyph a cell shows, from the look buffer's code (glyph, glyph before, fade, ground: see the shader). */
 function glyphOf(code) {
@@ -87,7 +93,7 @@ function charRows() {
   return out
 }
 // the hole's centre and R on this window (no prompt box: the middle; W is 0.6 of the width)
-const R_STILL = SIZE * Math.min(Math.min(Math.max(0.16 * 0.6 * WIDTH, 48), 150), 0.18 * HEIGHT)
+const R_STILL = SIZE * Math.min(Math.min(Math.max(0.13 * 0.6 * WIDTH, 40), 125), 0.15 * HEIGHT)
 /** How plainly a frame shows the ring: its lit characters in the upper half of the annulus. */
 function score(rows) {
   let n = 0
@@ -120,7 +126,7 @@ const r2 = new Renderer(shader2, {
   res: [WIDTH, HEIGHT],
   points: [WIDTH, HEIGHT],
   composer: [0, 0, 0, 0],
-  values: { dim: 0, speed: 1, fps: 0, calm: 0, size: SIZE },
+  values: { dim: 0, speed: 1, calm: 0, size: SIZE },
   fps: FPS,
 })
 for (let f = 0; f <= SECONDS * FPS; f++) r2.runFrame(f, false)
@@ -168,7 +174,7 @@ const text =
   `// \`node tools/make-still.mjs\` again when the shader changes. ./still.ts draws it.\n\n` +
   `/** The frame's window, its cells, and the first row kept (the blank rows above it and below the last are left out). */\n` +
   `export const STILL_GRID = { width: ${WIDTH}, height: ${HEIGHT}, cellW: ${CELL_W}, cellH: ${CELL_H}, firstRow: ${first} } as const\n\n` +
-  `/** The inks: the shader's colour ramp at ten levels of light, then its two stray colours (teal, violet). */\n` +
+  `/** The inks: the disc's heat at full and half light, then the ring's white-gold and the jets' blue and blue-white. */\n` +
   `export const STILL_INKS: readonly string[] = [${INKS.map(c => q(hex(c))).join(', ')}]\n\n` +
   `/** The characters, a row each from the top (from firstRow), with trailing blanks left off. */\n` +
   `export const STILL_ROWS: readonly string[] = [\n${rows.slice(first, last + 1).map(s => `  ${q(s)},`).join('\n')}\n]\n\n` +
