@@ -14,7 +14,7 @@
 //     wallpaper's `svg(settings, now)` (for a Kiki picture with the dimming veil laid inside it, as 1.9.0 did:
 //     the settings' dim, painted last, over all of it). `alt` is a non-empty string. For a shader scene `values`
 //     hold the wallpaper's own `values(settings)` and always `dim` (settings.dim / 100, so 0 to 0.8), `speed`
-//     (1 for smooth, 0.5 for light) and `fps` (1 when Show FPS is on, else 0).
+//     (1 for smooth, 0.5 for light) and no other: there is no `fps`, even with one still in the settings.
 //
 // A stand-in wallpaper of kind 'shader' (and one of kind 'svg') is built here, since no shader wallpaper exists
 // yet; it also records the arguments `svg` was called with. Until hooks/core/scene.ts and hooks/core/registry.ts
@@ -60,7 +60,6 @@ const settings = (over: Over = {}, kiki: Over = {}) => {
     blur: 0,
     dim: 30,
     colors: true,
-    fps: false,
     ...top,
     own: { kiki: { time: 'night', spinner: true, ...kiki }, blackhole: { size: 'medium', calm: false, ...hole }, stand: {}, flat: {} },
   } as never
@@ -127,14 +126,14 @@ test('the black hole is a shader scene with motion on: its five values, and a st
   expect(smooth.kind).toBe('shader')
   expect(Object.keys(smooth).sort()).toEqual(['alt', 'id', 'kind', 'source', 'values'])
   expect(smooth.id).toBe('blackhole')
-  expect(smooth.values).toEqual({ dim: 0.3, speed: 1, fps: 0, calm: 0, size: 1 })
+  expect(smooth.values).toEqual({ dim: 0.3, speed: 1, calm: 0, size: 1 })
   expect((smooth.source ?? '').startsWith('<svg')).toBe(true)
   expect((smooth.source ?? '').length <= 124_000).toBe(true)
   expect((smooth.source ?? '').includes('@keyframes')).toBe(false)
   expect((smooth.alt ?? '').length > 0).toBe(true)
-  const light = scene({ wallpaper: 'blackhole', motion: 'light', fps: true, dim: 80, hole: { size: 'large', calm: true } })
+  const light = scene({ wallpaper: 'blackhole', motion: 'light', dim: 80, hole: { size: 'large', calm: true } })
   expect(light.kind).toBe('shader')
-  expect(light.values).toEqual({ dim: 0.8, speed: 0.5, fps: 1, calm: 1, size: 1.25 })
+  expect(light.values).toEqual({ dim: 0.8, speed: 0.5, calm: 1, size: 1.25 })
   // The same still picture under the shader and alone.
   expect(scene({ wallpaper: 'blackhole', motion: 'off' }).source).toBe(smooth.source)
 })
@@ -150,7 +149,7 @@ test('the black hole with motion off is an svg scene of the same still picture',
 
 test('a shader wallpaper with motion off is an svg scene of its still picture', () => {
   calls.length = 0
-  const s = scene({ wallpaper: 'stand', motion: 'off', fps: true }, {}, ALL, NOON + 9)
+  const s = scene({ wallpaper: 'stand', motion: 'off' }, {}, ALL, NOON + 9)
   expect(s.kind).toBe('svg')
   expect(Object.keys(s).sort()).toEqual(['alt', 'kind', 'source'])
   expect(s.source).toContain(`${MARK}-off`)
@@ -160,20 +159,20 @@ test('a shader wallpaper with motion off is an svg scene of its still picture', 
   expect(scene({ wallpaper: 'stand', motion: 'off', on: false })).toEqual({ kind: 'none' })
 })
 
-test('a shader wallpaper with motion on is a shader scene: its id, its picture, its own values with dim, speed and fps', () => {
+test('a shader wallpaper with motion on is a shader scene: its id, its picture, its own values with dim and speed', () => {
   calls.length = 0
-  const s = scene({ wallpaper: 'stand', motion: 'smooth', dim: 30, fps: false }, {}, ALL, NOON + 3)
+  const s = scene({ wallpaper: 'stand', motion: 'smooth', dim: 30 }, {}, ALL, NOON + 3)
   expect(s.kind).toBe('shader')
   expect(Object.keys(s).sort()).toEqual(['alt', 'id', 'kind', 'source', 'values'])
   expect(s.id).toBe('stand')
   expect(s.source).toContain(MARK)
   expect((s.source ?? '').startsWith('<svg')).toBe(true)
   expect((s.alt ?? '').length > 0).toBe(true)
-  expect(s.values).toEqual({ glow: 2, wave: 3, dim: 0.3, speed: 1, fps: 0 })
+  expect(s.values).toEqual({ glow: 2, wave: 3, dim: 0.3, speed: 1 })
   expect(calls.at(-1)?.[1]).toBe(NOON + 3)
 })
 
-test('the shader values: dim is the setting over 100 (0 to 0.8), speed 1 for smooth and 0.5 for light, fps 1 or 0', () => {
+test('the shader values: dim is the setting over 100 (0 to 0.8), speed 1 for smooth and 0.5 for light, and no fps', () => {
   const values = (over: Over): Record<string, number> => scene({ wallpaper: 'stand', ...over }).values ?? {}
   expect(values({ dim: 0 }).dim).toBe(0)
   expect(values({ dim: 50 }).dim).toBe(0.5)
@@ -182,8 +181,12 @@ test('the shader values: dim is the setting over 100 (0 to 0.8), speed 1 for smo
   expect(values({ dim: -20 }).dim).toBe(0)
   expect(values({ motion: 'smooth' }).speed).toBe(1)
   expect(values({ motion: 'light' }).speed).toBe(0.5)
-  expect(values({ fps: true }).fps).toBe(1)
-  expect(values({ fps: false }).fps).toBe(0)
+  // No fps value at all, whatever a stored one holds.
+  for (const stored of [true, false, 1, 'on', null]) {
+    expect([stored, 'fps' in values({ fps: stored })]).toEqual([stored, false])
+    expect([stored, Object.keys(scene({ wallpaper: 'blackhole', fps: stored }).values ?? {}).sort()]).toEqual([stored, ['calm', 'dim', 'size', 'speed']])
+    expect([stored, Object.keys(values({ fps: stored })).sort()]).toEqual([stored, ['dim', 'glow', 'speed', 'wave']])
+  }
   // A wallpaper's own numbers ride beside them, from its own settings.
   const own = sceneFor({ ...(settings({ wallpaper: 'stand' }) as object), own: { stand: { glow: 7 } } } as never, ALL, NOON) as unknown as Scene
   expect(own.values?.glow).toBe(7)

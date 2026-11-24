@@ -27,10 +27,7 @@
 //          write: the setting less / plus 1.9.0's step (clear 10, blur 4, dim 10), held inside the range (0-100,
 //          0-40, 0-80), so at an end the button writes the end again
 //       7. app colors: ONE control, key 'colors', value = !settings.colors
-//       8. Show FPS: ONE control, key 'fps', value = !settings.fps
-//       9. a note row, only when Show FPS is on, straight after the Show FPS row: for a wallpaper of kind 'svg' its
-//          text says the frame rate of this wallpaper cannot be measured; for one of kind 'shader' it is exactly
-//          "Drawn at the top left of the chat."; with Show FPS off, no note
+//       (there is no Show FPS row and no note row about the frame rate: the frames-a-second count was removed)
 //      10. a heading whose text holds the current wallpaper's label (always, even when it has no options)
 //      11. the current wallpaper's own options only, in its order, each one row under its manifest key
 //          (`<id><Key>`): a choice is one control per choice with the setting's `current`; a boolean is one toggle
@@ -76,7 +73,6 @@ const settings = (over: Over = {}, kiki: Over = {}, stand: Over = {}) => {
     blur: 0,
     dim: 30,
     colors: true,
-    fps: false,
     ...top,
     own: { kiki: { time: 'auto', spinner: true, ...kiki }, blackhole: { size: 'medium', calm: false, ...hole }, stand: { mood: 'calm', glow: false, ...stand } },
   } as never
@@ -90,9 +86,9 @@ const names = (list: Row[]): string[] => list.map(nameOf)
 const controlsOf = (list: Row[], key: string): Control[] => list.find(r => r.kind === 'controls' && nameOf(r) === key)?.controls ?? []
 const allControls = (list: Row[]): Control[] => list.flatMap(r => r.controls ?? [])
 
-const COMMON_ROWS = ['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps']
+const COMMON_ROWS = ['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors']
 
-test('the rows run in order: wallpapers, on, motion, the three numbers, colors, fps, a heading, the wallpaper\'s own options', () => {
+test('the rows run in order: wallpapers, on, motion, the three numbers, colors, a heading, the wallpaper\'s own options', () => {
   expect(names(rows())).toEqual([...COMMON_ROWS, 'heading', 'kikiTime', 'kikiSpinner'])
   // Every row of controls is one key, and every control has a key, a value and a label.
   for (const r of rows()) {
@@ -145,8 +141,8 @@ test('there is one button per wallpaper, and only the current one is marked', ()
   expect(controlsOf(rows({ wallpaper: 'picture' }), 'wallpaper').map(c => c.current === true)).toEqual([true, false])
 })
 
-test('on, app colors and Show FPS are toggles that write the opposite of today\'s value', () => {
-  for (const key of ['on', 'colors', 'fps']) {
+test('on and app colors are toggles that write the opposite of today\'s value', () => {
+  for (const key of ['on', 'colors']) {
     for (const today of [true, false]) {
       const list = controlsOf(rows({ [key]: today }), key)
       expect([key, today, list.length]).toEqual([key, today, 1])
@@ -235,38 +231,23 @@ test('only the current wallpaper\'s own options show, from the list the pane is 
   expect(names(rows({}, {}, {}, ALL))).toEqual([...COMMON_ROWS, 'heading', 'kikiTime', 'kikiSpinner'])
 })
 
-test('with Show FPS on, an svg wallpaper gets a note that its frame rate cannot be measured, straight after the FPS row', () => {
-  for (const wallpaper of ['kiki']) {
-    const list = rows({ wallpaper, fps: true })
-    const notes = list.filter(r => r.kind === 'note')
-    expect([wallpaper, notes.length]).toEqual([wallpaper, 1])
-    expect([wallpaper, /frame rate/i.test(notes[0]?.text ?? '')]).toEqual([wallpaper, true])
-    expect([wallpaper, /cannot be measured/i.test(notes[0]?.text ?? '')]).toEqual([wallpaper, true])
-    const at = list.findIndex(r => nameOf(r) === 'fps')
-    expect([wallpaper, list.indexOf(notes[0] as Row)]).toEqual([wallpaper, at + 1])
-    expect([wallpaper, list[at + 2]?.kind]).toEqual([wallpaper, 'heading'])
+test('the pane has no Show FPS row and no note about the frame rate, for any wallpaper, even with an fps value still stored', () => {
+  for (const wallpaper of ['kiki', 'blackhole', 'stand']) {
+    for (const fps of [true, false, 1, 'on', null]) {
+      const list = rows({ wallpaper, fps }, {}, {}, ALL)
+      expect([wallpaper, fps, list.some(r => r.kind === 'note')]).toEqual([wallpaper, fps, false])
+      expect([wallpaper, fps, allControls(list).some(c => c.key === 'fps')]).toEqual([wallpaper, fps, false])
+      expect([wallpaper, fps, names(list).includes('fps')]).toEqual([wallpaper, fps, false])
+      expect([wallpaper, fps, /fps|frame rate|frames a second|top left|cannot be measured/i.test(JSON.stringify(list))]).toEqual([wallpaper, fps, false])
+    }
   }
 })
 
-test('with Show FPS on, a shader wallpaper gets the note "Drawn at the top left of the chat.", straight after the FPS row', () => {
-  const cases: [string, Row[]][] = [
-    ['blackhole', rows({ wallpaper: 'blackhole', fps: true })],
-    ['stand', rows({ wallpaper: 'stand', fps: true }, {}, {}, ALL)],
-  ]
-  for (const [wallpaper, list] of cases) {
-    const notes = list.filter(r => r.kind === 'note')
-    expect([wallpaper, notes.length]).toEqual([wallpaper, 1])
-    expect([wallpaper, notes[0]?.text]).toEqual([wallpaper, 'Drawn at the top left of the chat.'])
-    const at = list.findIndex(r => nameOf(r) === 'fps')
-    expect([wallpaper, list.indexOf(notes[0] as Row)]).toEqual([wallpaper, at + 1])
-    expect([wallpaper, list[at + 2]?.kind]).toEqual([wallpaper, 'heading'])
+test('after App colors comes the heading of the current wallpaper\'s own options', () => {
+  for (const [wallpaper, list] of [['kiki', rows()], ['blackhole', rows({ wallpaper: 'blackhole' })], ['stand', rows({ wallpaper: 'stand' }, {}, {}, ALL)]] as [string, Row[]][]) {
+    const at = list.findIndex(r => nameOf(r) === 'colors')
+    expect([wallpaper, at >= 0, list[at + 1]?.kind]).toEqual([wallpaper, true, 'heading'])
   }
-})
-
-test('no note shows with Show FPS off, whichever the wallpaper', () => {
-  expect(rows({ fps: false }).some(r => r.kind === 'note')).toBe(false)
-  expect(rows({ wallpaper: 'blackhole', fps: false }).some(r => r.kind === 'note')).toBe(false)
-  expect(rows({ wallpaper: 'stand', fps: false }, {}, {}, ALL).some(r => r.kind === 'note')).toBe(false)
 })
 
 test('no text of the pane names /wallpaper', () => {
@@ -279,12 +260,12 @@ test('no text of the pane names /wallpaper', () => {
 })
 
 test('the pane has no row for a picture or a video of your own', () => {
-  const text = JSON.stringify(paneRows(settings({ fps: true }), WALLPAPERS as never))
+  const text = JSON.stringify(paneRows(settings({}), WALLPAPERS as never))
   expect(/picture|video|ffmpeg/i.test(text)).toBe(false)
 })
 
 test('paneRows is pure: plain data, equal for equal settings, changing nothing it is given', () => {
-  const s = settings({ wallpaper: 'blackhole', clear: 40, fps: true, hole: { size: 'large' } })
+  const s = settings({ wallpaper: 'blackhole', clear: 40, hole: { size: 'large' } })
   const before = JSON.stringify(s)
   const a = paneRows(s, WALLPAPERS as never)
   expect(JSON.parse(JSON.stringify(a))).toEqual(a)

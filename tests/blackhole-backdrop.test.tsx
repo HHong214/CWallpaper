@@ -11,9 +11,9 @@
 //   black hole's own colors, and the Backdrop answers ONE `Shader` element whose only child is ONE `Svg`:
 //     * the Shader's `module` is './shader.ts' (the harness shows the engine's reading of it: the path
 //       'hooks/wallpapers/blackhole/shader.ts', and this file accepts either spelling);
-//     * its `values` hold exactly the five names calm, dim, fps, size and speed, each a number inside its range
-//       (dim 0 to 0.8, speed 0 to 1, fps 0 to 1, calm 0 to 1, size 0.6 to 1.4), following the options: dim is the
-//       option over 100 (30 gives 0.3), motion light gives speed 0.5 (smooth 1), Show FPS gives fps 1, the option
+//     * its `values` hold exactly the four names calm, dim, size and speed (never fps), each a number inside its range
+//       (dim 0 to 0.8, speed 0 to 1, calm 0 to 1, size 0.6 to 1.4), following the options: dim is the
+//       option over 100 (30 gives 0.3), motion light gives speed 0.5 (smooth 1), the option
 //       `blackholeCalm` gives calm 1, the option `blackholeSize` small, medium and large give size 0.8, 1, 1.25;
 //     * the Svg's source is the still picture: at most 124,000 characters, no animation, and the SAME string under
 //       the shader and alone.
@@ -22,7 +22,7 @@
 //   `/cwallpaper calm on` write `blackholeSize` and `blackholeCalm` while the black hole is on; while Kiki is on they
 //   are errors that say whose they are ("Size belongs to Black hole. The wallpaper is Kiki.").
 //   The pane with the black hole on shows its two own rows (buttons `blackholeSize:small|medium|large` and
-//   `blackholeCalm:<opposite>`) and no row of Kiki's, and with Show FPS on the note "Drawn at the top left of the chat." (not "cannot be measured").
+//   `blackholeCalm:<opposite>`) and no row of Kiki's, and no Show FPS row or note about the frame rate (the frames-a-second count was removed).
 //   The colors are a dark set with an amber accent that the app will paint. Another mod's backdrop of that name is
 //   still left to it.
 //
@@ -100,7 +100,7 @@ const drawnBy = async ($: Ctx, surface: 'desktop' | 'mobile' = 'desktop', name =
 }
 const valuesOf = (d: Drawn): Record<string, number> => (d.shaders[0]?.props?.values ?? {}) as Record<string, number>
 
-const RANGES: Record<string, [number, number]> = { dim: [0, 0.8], speed: [0, 1], fps: [0, 1], calm: [0, 1], size: [0.6, 1.4] }
+const RANGES: Record<string, [number, number]> = { dim: [0, 0.8], speed: [0, 1], calm: [0, 1], size: [0.6, 1.4] }
 
 const rgb = (hex: string | undefined): [number, number, number] | undefined => {
   const m = /^#([0-9a-fA-F]{6})$/.exec(hex ?? '')
@@ -136,10 +136,10 @@ test('the black hole\'s Backdrop is one Shader over one Svg, on the desktop and 
   }
 })
 
-test('the Shader\'s values are exactly calm, dim, fps, size and speed, each a number inside its range', HOLE, async ($, on) => {
+test('the Shader\'s values are exactly calm, dim, size and speed, each a number inside its range', HOLE, async ($, on) => {
   await begin($, on)
   const values = valuesOf(await drawnBy($))
-  expect(Object.keys(values).sort()).toEqual(['calm', 'dim', 'fps', 'size', 'speed'])
+  expect(Object.keys(values).sort()).toEqual(['calm', 'dim', 'size', 'speed'])
   for (const [name, [lo, hi]] of Object.entries(RANGES)) {
     const v = values[name]
     expect([name, typeof v, Number.isFinite(v)]).toEqual([name, 'number', true])
@@ -147,9 +147,9 @@ test('the Shader\'s values are exactly calm, dim, fps, size and speed, each a nu
   }
 })
 
-test('with the options at their defaults the values are dim 0.3, speed 1, fps 0, calm 0, size 1', HOLE, async ($, on) => {
+test('with the options at their defaults the values are dim 0.3, speed 1, calm 0, size 1', HOLE, async ($, on) => {
   await begin($, on)
-  expect(valuesOf(await drawnBy($))).toEqual({ dim: 0.3, speed: 1, fps: 0, calm: 0, size: 1 })
+  expect(valuesOf(await drawnBy($))).toEqual({ dim: 0.3, speed: 1, calm: 0, size: 1 })
 })
 
 const FOLLOW: [string, Record<string, unknown>, Record<string, number>][] = [
@@ -158,7 +158,6 @@ const FOLLOW: [string, Record<string, unknown>, Record<string, number>][] = [
   ['dim 55', { dim: 55 }, { dim: 0.55 }],
   ['motion light', { motion: 'light' }, { speed: 0.5 }],
   ['motion smooth', { motion: 'smooth' }, { speed: 1 }],
-  ['Show FPS', { fps: true }, { fps: 1 }],
   ['calm on', { blackholeCalm: true }, { calm: 1 }],
   ['calm off', { blackholeCalm: false }, { calm: 0 }],
   ['size small', { blackholeSize: 'small' }, { size: 0.8 }],
@@ -171,13 +170,20 @@ for (const [label, options, expected] of FOLLOW) {
     const d = await drawnBy($)
     expect(d.shaders.length).toBe(1)
     expect(valuesOf(d)).toMatchObject(expected)
-    expect(Object.keys(valuesOf(d)).sort()).toEqual(['calm', 'dim', 'fps', 'size', 'speed'])
+    expect(Object.keys(valuesOf(d)).sort()).toEqual(['calm', 'dim', 'size', 'speed'])
   })
 }
 
-test('the Shader\'s values at the other ends: everything on at once', { options: { wallpaper: 'blackhole', motion: 'light', fps: true, dim: 80, blackholeCalm: true, blackholeSize: 'large' } as never }, async ($, on) => {
+test('the Shader\'s values at the other ends: everything on at once', { options: { wallpaper: 'blackhole', motion: 'light', dim: 80, blackholeCalm: true, blackholeSize: 'large' } as never }, async ($, on) => {
   await begin($, on)
-  expect(valuesOf(await drawnBy($))).toEqual({ dim: 0.8, speed: 0.5, fps: 1, calm: 1, size: 1.25 })
+  expect(valuesOf(await drawnBy($))).toEqual({ dim: 0.8, speed: 0.5, calm: 1, size: 1.25 })
+})
+
+test('an fps option still stored adds no value: the Shader is handed no fps', { options: { wallpaper: 'blackhole', fps: true } as never }, async ($, on) => {
+  await begin($, on)
+  const values = valuesOf(await drawnBy($))
+  expect('fps' in values).toBe(false)
+  expect(Object.keys(values).sort()).toEqual(['calm', 'dim', 'size', 'speed'])
 })
 
 // ------------------------------------------------ the still picture, under the shader and alone
@@ -361,13 +367,14 @@ test('the pane\'s calm button writes the opposite of today\'s value', { options:
   await ui.unmount()
 })
 
-test('with Show FPS on the black hole\'s pane says where the readout is drawn, and has no "cannot be measured" note', { options: { wallpaper: 'blackhole', fps: true } }, async ($, on) => {
+test('the black hole\'s pane has no Show FPS row and no note about the frame rate', { options: { wallpaper: 'blackhole', fps: true } as never }, async ($, on) => {
   await begin($, on)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: /Drawn at the top left of the chat\./ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /cannot be measured/i })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /frame rate/i })).toBeUndefined()
-  expect(await ui.find({ key: 'fps:false' })).toBeDefined()
+  for (const word of [/fps/i, /frame rate/i, /frames a second/i, /top left/i, /cannot be measured/i]) {
+    expect([String(word), await ui.find({ type: 'Text', text: word })]).toEqual([String(word), undefined])
+  }
+  expect(await ui.find({ key: 'fps:false' })).toBeUndefined()
+  expect(await ui.find({ key: 'fps:true' })).toBeUndefined()
   await ui.unmount()
 })
 

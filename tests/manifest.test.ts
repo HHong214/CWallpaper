@@ -21,9 +21,8 @@
 //     the status line shows them. (A manifest range narrower than the contract's, a missing choice or an
 //     undeclared key fails these.)
 //   * with no options at all the plugin gets the manifest's defaults: the status line and the look it sets show
-//     them (the cat spinner's and Show FPS's defaults are shown in core-backdrop.test.tsx, which mounts the
-//     Spinner and the pane).
-//   * the old `spinner` key, and the keys of the removed loaders, are not declared.
+//     them (the cat spinner's default is shown in core-backdrop.test.tsx, which mounts the Spinner).
+//   * the old `spinner` key, the keys of the removed loaders and the removed `fps` are not declared.
 //
 // NOT PINNABLE FROM A TEST, and so left to `claude plugin validate .` and to review: the order of the keys in
 // the file, their `description`s, the titles of the three choices, and a manifest range or choice list WIDER than
@@ -60,8 +59,10 @@ async function loadWith($: any, on: any): Promise<string> {
   }
 }
 
-test('the list the manifest is compared with holds the twelve options in the contract\'s order', () => {
-  expect(specs.map(s => s.key)).toEqual(['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'kikiTime', 'kikiSpinner', 'blackholeSize', 'blackholeCalm'])
+test('the list the manifest is compared with holds the eleven options in the contract\'s order', () => {
+  expect(specs.map(s => s.key)).toEqual(['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'kikiTime', 'kikiSpinner', 'blackholeSize', 'blackholeCalm'])
+  expect(specs.length).toBe(11)
+  expect(specs.some(s => s.key === 'fps' || s.title === 'Show FPS')).toBe(false)
   expect(specs.map(s => s.title)).toEqual([
     'Wallpaper',
     'Wallpaper: on',
@@ -70,18 +71,17 @@ test('the list the manifest is compared with holds the twelve options in the con
     'Panels: blur',
     'Scene: dim',
     'App colors follow the wallpaper',
-    'Show FPS',
     'Kiki: time of day',
     'Kiki: cat spinner',
     'Black hole: size',
     'Black hole: calmer motion',
   ])
-  expect(specs.map(s => s.type)).toEqual(['choice', 'boolean', 'choice', 'number', 'number', 'number', 'boolean', 'boolean', 'choice', 'boolean', 'choice', 'boolean'])
-  expect(specs.map(s => s.default)).toEqual(['kiki', true, 'smooth', 100, 0, 30, true, false, 'auto', true, 'medium', false])
-  expect(specs[10]?.choices).toEqual(['small', 'medium', 'large'])
+  expect(specs.map(s => s.type)).toEqual(['choice', 'boolean', 'choice', 'number', 'number', 'number', 'boolean', 'choice', 'boolean', 'choice', 'boolean'])
+  expect(specs.map(s => s.default)).toEqual(['kiki', true, 'smooth', 100, 0, 30, true, 'auto', true, 'medium', false])
+  expect(specs[9]?.choices).toEqual(['small', 'medium', 'large'])
   expect(specs[0]?.choices).toEqual(['kiki', 'blackhole'])
   expect(specs[2]?.choices).toEqual(['smooth', 'light', 'off'])
-  expect(specs[8]?.choices).toEqual(['auto', 'day', 'sunset', 'night'])
+  expect(specs[7]?.choices).toEqual(['auto', 'day', 'sunset', 'night'])
   expect([specs[3]?.min, specs[3]?.max, specs[4]?.min, specs[4]?.max, specs[5]?.min, specs[5]?.max]).toEqual([0, 100, 0, 40, 0, 80])
 })
 
@@ -131,7 +131,7 @@ for (const [option, value, name, number] of [
   })
 }
 
-test('the old spinner key and the keys of the removed loaders are not declared', { options: { spinner: ['x'], theme: ['x'], isOn: ['x'], picture: ['x'], video: ['x'], film: ['x'], steps: ['x'] } as never }, async ($, on) => {
+test('the old spinner key, the keys of the removed loaders and the removed fps are not declared', { options: { fps: ['x'], spinner: ['x'], theme: ['x'], isOn: ['x'], picture: ['x'], video: ['x'], film: ['x'], steps: ['x'] } as never }, async ($, on) => {
   expect(await loadWith($, on)).toBe('')
 })
 

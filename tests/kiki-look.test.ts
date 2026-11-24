@@ -27,7 +27,6 @@ const settingsOf = (motion: string, time: string) =>
     blur: 0,
     dim: 30,
     colors: true,
-    fps: false,
     own: { kiki: { time, spinner: true }, blackhole: {} },
   }) as never
 

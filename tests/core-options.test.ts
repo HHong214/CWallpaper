@@ -12,8 +12,9 @@
 //     choices?: readonly string[]                  a choice only
 //     min?: number; max?: number                   a number only
 //   }
-//   COMMON: readonly OptionSpec[]                  the eight common options, in this order: wallpaper, on, motion,
-//                                                  clear, blur, dim, colors, fps. `wallpaper` has type 'choice' and
+//   COMMON: readonly OptionSpec[]                  the seven common options, in this order: wallpaper, on, motion,
+//                                                  clear, blur, dim, colors (there is no `fps`: the frames-a-second
+//                                                  count was removed). `wallpaper` has type 'choice' and
 //                                                  default 'kiki'; the registered ids are its `choices` only in
 //                                                  optionSpecs' answer (COMMON itself does not know the registry).
 //   optionSpecs(wallpapers: readonly { id: string; label: string; options: readonly OptionSpec[] }[]): OptionSpec[]
@@ -24,7 +25,7 @@
 //                                                  never changed by a call.
 //   readSettings(options: unknown, wallpapers: readonly { id: string; options: readonly OptionSpec[] }[]): Settings
 //     Settings = { on: boolean; wallpaper: string; motion: 'smooth' | 'light' | 'off'; clear: number;
-//                  blur: number; dim: number; colors: boolean; fps: boolean;
+//                  blur: number; dim: number; colors: boolean;      (no `fps`, whatever an old stored option holds)
 //                  own: Record<wallpaperId, Record<shortKey, boolean | string | number>> }
 //     reads the manifest keys of `options` (the object the engine hands `register(on, options)`). A missing,
 //     mistyped or unknown value reads as its default; a finite number is rounded to a whole number and clamped
@@ -72,7 +73,6 @@ const DEFAULTS = {
   blur: 0,
   dim: 30,
   colors: true,
-  fps: false,
   own: { kiki: { time: 'auto', spinner: true }, blackhole: { speed: 5 } },
 }
 
@@ -80,9 +80,10 @@ const read = (options: unknown) => readSettings(options as never, WALLPAPERS)
 
 // ------------------------------------------------------------------ COMMON
 
-test('COMMON lists the eight common options in order, with the titles and kinds the contract gives', () => {
-  expect(COMMON.map(o => o.key)).toEqual(['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps'])
-  expect(COMMON.map(o => o.type)).toEqual(['choice', 'boolean', 'choice', 'number', 'number', 'number', 'boolean', 'boolean'])
+test('COMMON lists the seven common options in order, with the titles and kinds the contract gives', () => {
+  expect(COMMON.map(o => o.key)).toEqual(['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors'])
+  expect(COMMON.length).toBe(7)
+  expect(COMMON.map(o => o.type)).toEqual(['choice', 'boolean', 'choice', 'number', 'number', 'number', 'boolean'])
   expect(COMMON.map(o => o.title)).toEqual([
     'Wallpaper',
     'Wallpaper: on',
@@ -91,7 +92,6 @@ test('COMMON lists the eight common options in order, with the titles and kinds 
     'Panels: blur',
     'Scene: dim',
     'App colors follow the wallpaper',
-    'Show FPS',
   ])
   for (const o of COMMON) {
     expect(typeof o.description).toBe('string')
@@ -99,18 +99,18 @@ test('COMMON lists the eight common options in order, with the titles and kinds 
   }
 })
 
-test('the fps option says where the readout is drawn, and no description names /wallpaper', () => {
-  const fps = COMMON.find(o => o.key === 'fps')
-  expect(fps?.title).toBe('Show FPS')
-  expect(fps?.default).toBe(false)
-  expect(fps?.description).toBe('Draw the measured frames a second at the top left of the chat, on a wallpaper the app plays on the GPU.')
+test('the fps option is gone, and no description names /wallpaper or the frames a second', () => {
+  expect(COMMON.find(o => o.key === 'fps')).toBeUndefined()
+  expect(COMMON.some(o => o.title === 'Show FPS')).toBe(false)
+  expect(optionSpecs(WALLPAPERS).find(s => s.key === 'fps')).toBeUndefined()
+  for (const s of optionSpecs(WALLPAPERS)) expect([s.key, /fps|frames a second|frame rate/i.test(`${s.title} ${s.description}`)]).toEqual([s.key, false])
   for (const o of COMMON) expect([o.key, o.description.includes('/wallpaper')]).toEqual([o.key, false])
   for (const s of optionSpecs(WALLPAPERS)) expect([s.key, s.description.includes('/wallpaper')]).toEqual([s.key, false])
 })
 
 test('COMMON holds 1.9.0\'s defaults, the motion choices and the three ranges', () => {
   const by = (key: string) => COMMON.find(o => o.key === key)
-  expect(COMMON.map(o => o.default)).toEqual(['kiki', true, 'smooth', 100, 0, 30, true, false])
+  expect(COMMON.map(o => o.default)).toEqual(['kiki', true, 'smooth', 100, 0, 30, true])
   expect(by('motion')?.choices).toEqual(['smooth', 'light', 'off'])
   expect([by('clear')?.min, by('clear')?.max]).toEqual([0, 100])
   expect([by('blur')?.min, by('blur')?.max]).toEqual([0, 40])
@@ -152,7 +152,7 @@ test('optionSpecs gives a wallpaper\'s own options a title that starts with its 
 test('optionSpecs follows the order of the wallpapers it is given, and leaves COMMON alone', () => {
   const before = JSON.stringify(COMMON)
   const flipped = optionSpecs([HOLE, KIKI] as never)
-  expect(flipped.map(s => s.key).slice(8)).toEqual(['blackholeSpeed', 'kikiTime', 'kikiSpinner'])
+  expect(flipped.map(s => s.key).slice(7)).toEqual(['blackholeSpeed', 'kikiTime', 'kikiSpinner'])
   expect(flipped[0]?.choices).toEqual(['blackhole', 'kiki'])
   optionSpecs(WALLPAPERS)
   expect(JSON.stringify(COMMON)).toBe(before)
@@ -166,16 +166,16 @@ test('readSettings gives 1.9.0\'s defaults for no options and for junk in place 
   for (const junk of [undefined, null, 'text', 7, true, [], {}, () => 1]) {
     expect([junk, read(junk)]).toEqual([junk, DEFAULTS])
   }
-  expect(Object.keys(read({})).sort()).toEqual(['blur', 'clear', 'colors', 'dim', 'fps', 'motion', 'on', 'own', 'wallpaper'])
+  expect(Object.keys(read({})).sort()).toEqual(['blur', 'clear', 'colors', 'dim', 'motion', 'on', 'own', 'wallpaper'])
 })
 
 test('readSettings reads every valid value as given', () => {
   const got = read({
-    wallpaper: 'blackhole', on: false, motion: 'light', clear: 40, blur: 12, dim: 0, colors: false, fps: true,
+    wallpaper: 'blackhole', on: false, motion: 'light', clear: 40, blur: 12, dim: 0, colors: false,
     kikiTime: 'night', kikiSpinner: false, blackholeSpeed: 8,
   })
   expect(got).toEqual({
-    on: false, wallpaper: 'blackhole', motion: 'light', clear: 40, blur: 12, dim: 0, colors: false, fps: true,
+    on: false, wallpaper: 'blackhole', motion: 'light', clear: 40, blur: 12, dim: 0, colors: false,
     own: { kiki: { time: 'night', spinner: false }, blackhole: { speed: 8 } },
   })
   for (const motion of ['smooth', 'light', 'off']) expect(read({ motion }).motion).toBe(motion)
@@ -212,12 +212,24 @@ test('readSettings reads a mistyped or non-finite number as the default', () => 
   }
 })
 
-test('readSettings reads a mistyped boolean as its default (on and colors true, fps false)', () => {
+test('readSettings reads a mistyped boolean as its default (on and colors true)', () => {
   for (const junk of ['yes', 'false', 0, 1, null, [], {}]) {
     expect([junk, read({ on: junk }).on]).toEqual([junk, true])
     expect([junk, read({ colors: junk }).colors]).toEqual([junk, true])
-    expect([junk, read({ fps: junk }).fps]).toEqual([junk, false])
   }
+})
+
+test('readSettings ignores an fps value still stored in old options, whatever it holds', () => {
+  for (const stored of [true, false, 1, 0, 'on', 'yes', null, [], {}, 42, Number.NaN]) {
+    const got = read({ fps: stored })
+    expect([stored, 'fps' in got]).toEqual([stored, false])
+    expect([stored, got]).toEqual([stored, DEFAULTS])
+  }
+  // Beside valid options it changes nothing of them.
+  const mixed = read({ fps: true, motion: 'light', dim: 10, kikiTime: 'night' })
+  expect('fps' in mixed).toBe(false)
+  expect(mixed).toEqual({ ...DEFAULTS, motion: 'light', dim: 10, own: { kiki: { time: 'night', spinner: true }, blackhole: { speed: 5 } } })
+  expect(Object.keys(mixed).sort()).toEqual(['blur', 'clear', 'colors', 'dim', 'motion', 'on', 'own', 'wallpaper'])
 })
 
 test('readSettings reads a choice outside its choices as its default', () => {

@@ -22,7 +22,7 @@
 //                                                   `size` (choice small, medium, large; default medium) and `calm`
 //                                                   (boolean; default false); `svg` is the still picture (no
 //                                                   animation, whatever the motion); `values(settings)` gives exactly
-//                                                   dim (dim / 100), speed (1 smooth, 0.5 light), fps (1 or 0),
+//                                                   dim (dim / 100), speed (1 smooth, 0.5 light),
 //                                                   calm (1 or 0) and size (0.8, 1, 1.25); `scene` is a function (what
 //                                                   it draws is blackhole-backdrop.test.tsx's)
 //
@@ -49,7 +49,6 @@ const settings = (over: Over = {}, own: Over = {}) =>
     blur: 0,
     dim: 30,
     colors: true,
-    fps: false,
     ...over,
     own: { kiki: { time: 'night', spinner: true, ...(own.kiki as Over | undefined) }, blackhole: { size: 'medium', calm: false, ...(own.blackhole as Over | undefined) } },
   }) as never
@@ -99,7 +98,7 @@ test('the aliases include 1.9.0\'s words, and no word is two wallpapers\' or a c
   expect(blackhole.aliases).toContain('hole')
   const words = WALLPAPERS.flatMap(w => [w.id, ...w.aliases].map(a => a.toLowerCase()))
   expect(new Set(words).size).toBe(words.length)
-  const commands = ['on', 'off', 'help', 'settings', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'time', 'spinner', 'picture', 'video']
+  const commands = ['on', 'off', 'help', 'settings', 'motion', 'clear', 'blur', 'dim', 'colors', 'time', 'spinner', 'picture', 'video']
   for (const c of commands) expect([c, words.includes(c)]).toEqual([c, false])
 })
 
@@ -201,18 +200,19 @@ test('the black hole\'s svg is one still picture: the same for every motion, wha
   expect(still.length <= CAP).toBe(true)
 })
 
-test('the black hole\'s values are exactly dim, speed, fps, calm and size, following the settings', () => {
+test('the black hole\'s values are exactly dim, speed, calm and size, following the settings', () => {
   const values = (over: Over = {}, own: Over = {}) => blackhole.values?.(settings({ wallpaper: 'blackhole', ...over }, own)) as Record<string, number>
   expect(typeof blackhole.values).toBe('function')
-  expect(values()).toEqual({ dim: 0.3, speed: 1, fps: 0, calm: 0, size: 1 })
-  expect(Object.keys(values()).sort()).toEqual(['calm', 'dim', 'fps', 'size', 'speed'])
+  expect(values()).toEqual({ dim: 0.3, speed: 1, calm: 0, size: 1 })
+  expect(Object.keys(values()).sort()).toEqual(['calm', 'dim', 'size', 'speed'])
   expect(values({ dim: 0 }).dim).toBe(0)
   expect(values({ dim: 80 }).dim).toBe(0.8)
   expect(values({ dim: 55 }).dim).toBe(0.55)
   expect(values({ motion: 'light' }).speed).toBe(0.5)
   expect(values({ motion: 'smooth' }).speed).toBe(1)
-  expect(values({ fps: true }).fps).toBe(1)
-  expect(values({ fps: false }).fps).toBe(0)
+  // No fps, even with an fps value still in the settings.
+  expect('fps' in values({ fps: true })).toBe(false)
+  expect('fps' in values({ fps: false })).toBe(false)
   expect(values({}, { blackhole: { calm: true } }).calm).toBe(1)
   expect(values({}, { blackhole: { calm: false } }).calm).toBe(0)
   for (const [size, number] of [['small', 0.8], ['medium', 1], ['large', 1.25]] as const) {

@@ -10,8 +10,8 @@
 //   2. plugin.json: `name` is "CWallpaper" (capitals are fine: `claude plugin validate .` warns that it is not
 //      kebab-case and accepts it, so no test here forbids them); `author.name` is "HHong214"; there is NO `version`
 //      field; the description names Kiki and the black hole, says nothing of a picture or a video of your own, and
-//      never names "/wallpaper" (the command is "/cwallpaper"); no option description does either, and the `fps`
-//      description says where the readout is drawn.
+//      never names "/wallpaper" (the command is "/cwallpaper"); no option description does either. There is no `fps`
+//      option any more (eleven options in all): the frames-a-second count was removed.
 //   3. .claude-plugin/marketplace.json: `name` is "cwallpaper" (unchanged), its `metadata.description` is
 //      "CWallpaper: moving wallpapers for the Claude desktop app.", its one plugin entry is "CWallpaper" with
 //      "source": "./" and no `version`. (Installed, the id is "CWallpaper@cwallpaper".)
@@ -119,13 +119,14 @@ describe('plugin.json userConfig is what optionSpecs(WALLPAPERS) lists', () => {
     }
   })
 
-  it('has the twelve options of the contract: the ten common and Kiki\'s, then the black hole\'s size and calm', async () => {
+  it('has the eleven options of the contract: the seven common and Kiki\'s, then the black hole\'s size and calm', async () => {
     const list = await specs()
-    assert.deepEqual(list.map(s => s.key), ['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'kikiTime', 'kikiSpinner', 'blackholeSize', 'blackholeCalm'])
-    assert.deepEqual(list.slice(10).map(s => s.title), ['Black hole: size', 'Black hole: calmer motion'])
-    assert.deepEqual(list[10].choices, ['small', 'medium', 'large'])
-    assert.equal(list[10].default, 'medium')
-    assert.equal(list[11].default, false)
+    assert.deepEqual(list.map(s => s.key), ['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'kikiTime', 'kikiSpinner', 'blackholeSize', 'blackholeCalm'])
+    assert.equal(list.length, 11)
+    assert.deepEqual(list.slice(9).map(s => s.title), ['Black hole: size', 'Black hole: calmer motion'])
+    assert.deepEqual(list[9].choices, ['small', 'medium', 'large'])
+    assert.equal(list[9].default, 'medium')
+    assert.equal(list[10].default, false)
   })
 })
 
@@ -147,11 +148,14 @@ describe('plugin.json', () => {
     }
   })
 
-  it('describes the fps option as the readout at the top left of the chat', () => {
-    const { fps } = read('.claude-plugin/plugin.json').userConfig
-    assert.equal(fps.title, 'Show FPS')
-    assert.equal(fps.default, false)
-    assert.equal(fps.description, 'Draw the measured frames a second at the top left of the chat, on a wallpaper the app plays on the GPU.')
+  it('has no fps option, in the manifest or in what its descriptions say', () => {
+    const { userConfig } = read('.claude-plugin/plugin.json')
+    assert.ok(!('fps' in userConfig), 'the fps option was removed')
+    assert.equal(Object.keys(userConfig).length, 11)
+    for (const [key, entry] of Object.entries(userConfig)) {
+      assert.ok(entry.title !== 'Show FPS', `${key}: no Show FPS title`)
+      assert.doesNotMatch(`${entry.title} ${entry.description}`, /fps|frames a second|frame rate/i, `${key} mentions the frames a second`)
+    }
   })
 
   it('has no version field: every commit pushed to GitHub is an update', () => {

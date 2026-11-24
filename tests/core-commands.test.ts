@@ -7,7 +7,7 @@
 //     | { kind: 'status' } | { kind: 'help' } | { kind: 'pane' }
 //     | { kind: 'set'; key: string; value: boolean | string | number; also?: Action | Action[] }
 //     | { kind: 'error'; message: string }
-//     key is the MANIFEST key ('on', 'wallpaper', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'kikiTime',
+//     key is the MANIFEST key ('on', 'wallpaper', 'motion', 'clear', 'blur', 'dim', 'colors', 'kikiTime',
 //     'kikiSpinner'), value a boolean, a string or a whole number (never a string for a number).
 //     `also` is the second `set` a wallpaper's name brings when the wallpaper was off: a `set` of on = true, as one
 //     action or a list of one. It is left out, undefined or empty when the wallpaper is already on.
@@ -38,7 +38,6 @@ const settings = (over: Over = {}, kiki: Over = {}) =>
     blur: 0,
     dim: 30,
     colors: true,
-    fps: false,
     ...over,
     own: { kiki: { time: 'auto', spinner: true, ...kiki }, blackhole: { size: 'medium', calm: false }, stand: { mood: 'calm' } },
   }) as never
@@ -148,8 +147,8 @@ test('a number outside its range, or not a whole number, is an error that names 
   }
 })
 
-test('colors and fps take on or off, and set a boolean', () => {
-  for (const key of ['colors', 'fps']) {
+test('colors takes on or off, and sets a boolean', () => {
+  for (const key of ['colors']) {
     expect([key, run(`${key} on`)]).toEqual([key, { kind: 'set', key, value: true }])
     expect([key, run(`${key} off`)]).toEqual([key, { kind: 'set', key, value: false }])
     expect([key, run(`${key.toUpperCase()} ON`)]).toEqual([key, { kind: 'set', key, value: true }])
@@ -298,7 +297,7 @@ test('no status or help text speaks of a picture or a video', () => {
     helpText(ALL),
     statusText(settings(), WALLPAPERS as never),
     statusText(settings({ on: false }), WALLPAPERS as never),
-    statusText(settings({ wallpaper: 'blackhole', fps: true }), WALLPAPERS as never),
+    statusText(settings({ wallpaper: 'blackhole' }), WALLPAPERS as never),
   ]
   for (const text of texts) {
     expect(/picture|video|ffmpeg/i.test(text)).toBe(false)
@@ -309,7 +308,7 @@ test('the help lists every command and the wallpapers by name', () => {
   const help = helpText(WALLPAPERS as never)
   expect(typeof help).toBe('string')
   expect(help).toMatch(/\/cwallpaper/)
-  for (const word of ['settings', 'help', 'kiki', 'blackhole', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'time', 'spinner', 'size', 'calm']) {
+  for (const word of ['settings', 'help', 'kiki', 'blackhole', 'motion', 'clear', 'blur', 'dim', 'colors', 'time', 'spinner', 'size', 'calm']) {
     expect([word, help.includes(word)]).toEqual([word, true])
   }
   expect(/\bon\b/.test(help) && /\boff\b/.test(help)).toBe(true)
@@ -320,11 +319,11 @@ test('the help lists every command and the wallpapers by name', () => {
 
 test('no text of the commands names /wallpaper: the help, the status and every error say /cwallpaper where they name the command', () => {
   const texts: string[] = [helpText(WALLPAPERS as never), helpText(ALL)]
-  for (const over of [{}, { on: false }, { wallpaper: 'blackhole' }, { wallpaper: 'blackhole', fps: true }, { fps: true }]) {
+  for (const over of [{}, { on: false }, { wallpaper: 'blackhole' }]) {
     texts.push(statusText(settings(over), WALLPAPERS as never))
   }
   for (const text of [
-    'moonbase', 'valley', 'on now', 'kiki now', 'clear', 'clear 101', 'clear abc', 'blur 41', 'dim 81', 'motion steps', 'colors maybe', 'fps maybe',
+    'moonbase', 'valley', 'on now', 'kiki now', 'clear', 'clear 101', 'clear abc', 'blur 41', 'dim 81', 'motion steps', 'colors maybe', 'fps maybe', 'fps on', 'fps',
     'time dusk', 'time', 'spinner maybe', 'picture a.png', 'video b.mp4', 'size large', 'calm on', 'size huge',
   ]) {
     const a = run(text)
@@ -335,6 +334,30 @@ test('no text of the commands names /wallpaper: the help, the status and every e
   for (const [i, t] of texts.entries()) expect([i, t.includes('/wallpaper')]).toEqual([i, false])
   expect(texts[0]).toMatch(/\/cwallpaper/)
   expect(String(run('moonbase').message)).toMatch(/\/cwallpaper help/)
+})
+
+test('fps on, fps off and fps are no longer commands: each is the error of any unknown word', () => {
+  for (const over of [{}, { wallpaper: 'blackhole' }, { on: false }]) {
+    for (const text of ['fps on', 'fps off', 'fps', 'FPS ON', 'fps maybe']) {
+      const a = run(text, over)
+      expect([text, a.kind]).toEqual([text, 'error'])
+      const message = String(a.message)
+      // It names what was typed and points to the help, as for any unknown word.
+      expect([text, message.toLowerCase().includes('fps')]).toEqual([text, true])
+      expect([text, message.includes('/cwallpaper help')]).toEqual([text, true])
+      // Word for word the error of a word that was never a command, with only the word changed.
+      const stand = text.replace(/fps/i, 'zzq')
+      expect([text, message.toLowerCase()]).toEqual([text, String(run(stand, over).message).toLowerCase().replace('zzq', 'fps')])
+    }
+  }
+})
+
+test('neither the help nor the status mention FPS or the frames a second', () => {
+  const texts = [helpText(WALLPAPERS as never), helpText(ALL)]
+  for (const over of [{}, { on: false }, { wallpaper: 'blackhole' }, { wallpaper: 'stand' }, { fps: true }, { motion: 'light' }]) {
+    texts.push(statusText(settings(over), ALL))
+  }
+  for (const [i, t] of texts.entries()) expect([i, /fps|frames? a second|frame rate/i.test(t)]).toEqual([i, false])
 })
 
 test('the help is made from the wallpapers it is given', () => {

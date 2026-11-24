@@ -260,7 +260,6 @@ const WRITES: [string, string, unknown, Record<string, unknown>?][] = [
   ['dim 0', 'dim', 0],
   ['dim 80', 'dim', 80],
   ['colors off', 'colors', false],
-  ['fps on', 'fps', true],
   ['time night', 'kikiTime', 'night'],
   ['spinner off', 'kikiSpinner', false],
 ]
@@ -341,7 +340,7 @@ test('the status line of Kiki holds her time of day', { options: { kikiTime: 'ni
 test('/cwallpaper help lists the commands and the wallpapers, and says nothing of a picture or a video', async ($, on) => {
   await begin($, on)
   const help = String((await $.command.run(wallpaper('help'))).text)
-  for (const word of ['settings', 'kiki', 'blackhole', 'motion', 'clear', 'blur', 'dim', 'colors', 'fps', 'time', 'spinner']) {
+  for (const word of ['settings', 'kiki', 'blackhole', 'motion', 'clear', 'blur', 'dim', 'colors', 'time', 'spinner']) {
     expect([word, help.includes(word)]).toEqual([word, true])
   }
   expect(/picture|video|ffmpeg/i.test(help)).toBe(false)
@@ -424,7 +423,7 @@ test('the status of a wallpaper that is off does not name /wallpaper either', { 
   expect(text.includes('/wallpaper')).toBe(false)
 })
 
-test('no text the pane shows names /wallpaper', { options: { fps: true } }, async ($, on) => {
+test('no text the pane shows names /wallpaper, with an fps value still stored too', { options: { fps: true } }, async ($, on) => {
   await begin($, on)
   for (const surface of ['desktop', 'terminal'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
@@ -500,14 +499,14 @@ test('with the look off the spinner is the app\'s too', { options: { on: false }
 
 // ------------------------------------------------ the pane
 
-test('the pane shows a button for each wallpaper, on, motion, the numbers, colors and Show FPS, on every surface', async ($, on) => {
+test('the pane shows a button for each wallpaper, on, motion, the numbers and colors, on every surface', async ($, on) => {
   await begin($, on)
   for (const surface of ['desktop', 'terminal'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     const keys = (await buttonsOf(ui)).map(b => b.key)
     for (const key of [
       'wallpaper:kiki', 'wallpaper:blackhole', 'on:false', 'motion:smooth', 'motion:light', 'motion:off',
-      'clear:90', 'clear:100', 'blur:0', 'blur:4', 'dim:20', 'dim:40', 'colors:false', 'fps:true',
+      'clear:90', 'clear:100', 'blur:0', 'blur:4', 'dim:20', 'dim:40', 'colors:false',
     ]) {
       expect([surface, key, keys.includes(key)]).toEqual([surface, key, true])
     }
@@ -556,39 +555,53 @@ test('the two wallpaper buttons are neighbours in one row, labelled by their nam
   await ui.unmount()
 })
 
-test('with Show FPS on, an svg wallpaper\'s pane says its frame rate cannot be measured; with it off, nothing', { options: { fps: true } }, async ($, on) => {
+for (const [label, options] of [
+  ['Kiki', { fps: true }],
+  ['the black hole', { fps: true, wallpaper: 'blackhole' }],
+  ['Kiki, with the old fps false', { fps: false }],
+] as const) {
+  test(`the pane of ${label} has no Show FPS row and no note about the frame rate`, { options: options as never }, async ($, on) => {
+    await begin($, on)
+    for (const surface of ['desktop', 'terminal'] as const) {
+      const ui = await $.ui.mount({ ...PANE, surface })
+      const keys = (await buttonsOf(ui)).map(b => b.key)
+      expect([surface, keys.some(k => k.startsWith('fps:'))]).toEqual([surface, false])
+      for (const word of [/fps/i, /frame rate/i, /frames a second/i, /top left/i, /cannot be measured/i]) {
+        expect([surface, String(word), await shows(ui, word)]).toEqual([surface, String(word), false])
+      }
+      expect([surface, (await buttonsOf(ui)).some(b => /fps/i.test(b.label))]).toEqual([surface, false])
+      await ui.unmount()
+    }
+  })
+}
+
+test('fps on, fps off and fps are no longer commands: each is the error of an unknown word, and writes nothing', async ($, on) => {
+  const seen = await begin($, on)
+  const before = seen.looks.length
+  for (const text of ['fps on', 'fps off', 'fps']) {
+    const said = String(((await $.command.run(wallpaper(text))) as { text: string }).text)
+    expect([text, said.includes('fps'), said.includes('/cwallpaper help')]).toEqual([text, true, true])
+    expect([text, /The wallpaper is/.test(said)]).toEqual([text, false])
+  }
+  expect(seen.written).toEqual([])
+  expect(seen.looks.length).toBe(before)
+  expect(seen.cleared).toBe(0)
+})
+
+test('neither the help nor the status mention FPS or the frames a second', async ($, on) => {
   await begin($, on)
-  for (const surface of ['desktop', 'terminal'] as const) {
-    const ui = await $.ui.mount({ ...PANE, surface })
-    expect([surface, await shows(ui, /frame rate/i)]).toEqual([surface, true])
-    expect([surface, (await buttonsOf(ui)).map(b => b.key).includes('fps:false')]).toEqual([surface, true])
-    await ui.unmount()
+  for (const text of ['help', '']) {
+    const said = String(((await $.command.run(wallpaper(text))) as { text: string }).text)
+    expect([text, /fps|frames? a second|frame rate/i.test(said)]).toEqual([text, false])
   }
 })
 
-test('with Show FPS on and the black hole on, the note says where it is drawn, not that it cannot be measured', { options: { fps: true, wallpaper: 'blackhole' } }, async ($, on) => {
-  await begin($, on)
-  for (const surface of ['desktop', 'terminal'] as const) {
-    const ui = await $.ui.mount({ ...PANE, surface })
-    expect([surface, await shows(ui, /Drawn at the top left of the chat\./)]).toEqual([surface, true])
-    expect([surface, await shows(ui, /cannot be measured/i)]).toEqual([surface, false])
-    await ui.unmount()
-  }
-})
-
-test('with Show FPS off the black hole\'s pane has no note at all', { options: { fps: false, wallpaper: 'blackhole' } }, async ($, on) => {
-  await begin($, on)
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await shows(ui, /top left/i)).toBe(false)
-  expect(await shows(ui, /frame rate/i)).toBe(false)
-  await ui.unmount()
-})
-
-test('with Show FPS off there is no note', async ($, on) => {
-  await begin($, on)
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await shows(ui, /frame rate/i)).toBe(false)
-  await ui.unmount()
+test('an fps option still stored changes nothing: the look and the status are as without it', { options: { fps: true } }, async ($, on) => {
+  const seen = await begin($, on)
+  expect(seen.looks.length).toBe(1)
+  expect(seen.looks[0]?.backdrop?.scene).toBe('kiki')
+  const said = String(((await $.command.run(wallpaper(''))) as { text: string }).text)
+  expect(/fps|frames? a second/i.test(said)).toBe(false)
 })
 
 /** Buttons of the pane that are pressed, and the one option each writes; each is a real change from the options it starts from. */
@@ -603,7 +616,6 @@ const PRESSES: [string, string, unknown, Record<string, unknown>?][] = [
   ['dim:40', 'dim', 40],
   ['dim:20', 'dim', 20],
   ['colors:false', 'colors', false],
-  ['fps:true', 'fps', true],
   ['kikiTime:night', 'kikiTime', 'night'],
   ['kikiSpinner:false', 'kikiSpinner', false],
 ]

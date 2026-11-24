@@ -20,7 +20,7 @@
 //   1. The mod never clears a theme that is not its own: `$.theme.clear()` clears whatever theme stands. It is
 //      made once on the person's ask to turn the wallpaper off (`/cwallpaper off`, the pane's on/off control while
 //      on), and at a start only when `lookSet` says this mod set the look this session and the option says off.
-//      With the option `on: false` any other change (a dial, motion, FPS, colors, an own option, a wallpaper
+//      With the option `on: false` any other change (a dial, motion, colors, an own option, a wallpaper
 //      choice) clears nothing, and nor does a start without `lookSet`.
 //   2. A write that changes nothing writes nothing: no `config.set`, no new `theme.set`; the command still
 //      answers with the status line.
@@ -140,7 +140,7 @@ test('a start with the option on off, after this mod set the look this session (
   expect(seen.looks.length).toBe(0)
 })
 
-for (const text of ['dim 20', 'blur 4', 'fps on', 'motion light', 'colors off', 'clear 90', 'time night', 'spinner off']) {
+for (const text of ['dim 20', 'blur 4', 'motion light', 'colors off', 'clear 90', 'time night', 'spinner off']) {
   test(`/cwallpaper ${text} while the wallpaper is off clears nothing`, { options: { on: false } }, async ($, on) => {
     const seen = await begin($, on)
     const answer = await said($, text)
@@ -150,7 +150,7 @@ for (const text of ['dim 20', 'blur 4', 'fps on', 'motion light', 'colors off', 
   })
 }
 
-for (const key of ['motion:light', 'motion:off', 'clear:90', 'blur:4', 'dim:20', 'dim:40', 'colors:false', 'fps:true', 'kikiTime:night', 'kikiSpinner:false']) {
+for (const key of ['motion:light', 'motion:off', 'clear:90', 'blur:4', 'dim:20', 'dim:40', 'colors:false', 'kikiTime:night', 'kikiSpinner:false']) {
   test(`pressing ${key} in the pane while the wallpaper is off clears nothing`, { options: { on: false } }, async ($, on) => {
     const seen = await begin($, on)
     await press($, key)
@@ -196,7 +196,6 @@ const SAME: [string, Record<string, unknown>][] = [
   ['dim 30', {}],
   ['colors on', {}],
   ['colors off', { colors: false }],
-  ['fps off', {}],
   ['on', {}],
   ['time auto', {}],
   ['spinner on', {}],
