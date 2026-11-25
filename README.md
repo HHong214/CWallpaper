@@ -37,6 +37,7 @@ The plugin has no version number, so every pushed commit is an update. In the ap
 | `/cwallpaper kiki`, `/cwallpaper blackhole` | Wallpaper | the wallpaper's name |
 | `/cwallpaper on`, `/cwallpaper off` | Wallpaper: on | on or off |
 | `/cwallpaper motion <word>` | Motion | `smooth`, `light` or `off` |
+| set in the settings pane or on the plugin options screen; `/cwallpaper rest 15` is not a command | Rest when idle (minutes) | `off`, `5` or `15`; default `5` |
 | `/cwallpaper clear <n>` | Panels: how clear | 0 to 100 |
 | `/cwallpaper blur <n>` | Panels: blur | 0 to 40 |
 | `/cwallpaper dim <n>` | Scene: dim | 0 to 80 |
@@ -47,6 +48,14 @@ The plugin has no version number, so every pushed commit is an update. In the ap
 | `/cwallpaper calm on\|off` | Black hole: calmer motion | on or off |
 
 A wallpaper's own settings work only while it is the wallpaper.
+
+Rest: after this many minutes with no prompt and no turn running in the session, the wallpaper stops moving and shows its still picture (the black hole stops using the GPU). A prompt, a turn, `/cwallpaper` or a press in the settings pane wakes it. `off` never rests. Each session rests by itself.
+
+Motion `light` is calmer: Kiki's shooting star and camera rest, the black hole turns more slowly.
+
+Panels: how clear at 100 is clear; at 0 the panels are left as the app draws them, solid, with no glass.
+
+The black hole is painted on near-black, so it always turns the app dark, whether App colours follow the wallpaper or not. Kiki leaves the app in your own mode.
 
 Fine characters (the black hole's are 6 by 10 points) vanish behind a blurred panel. Keep Panels: blur low, about 1, to see them.
 

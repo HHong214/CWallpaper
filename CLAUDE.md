@@ -26,12 +26,13 @@ hooks/core/options.ts             pure: the option model (COMMON, optionSpecs, r
 hooks/core/registry.ts            pure: the Wallpaper type and WALLPAPERS, the one list to add a wallpaper to
 hooks/core/commands.ts            pure: `/cwallpaper ...` text to an action, status and help text
 hooks/core/pane.ts                pure: the rows of the settings pane
+hooks/core/look.ts                pure: `setLook`, which sets the look through two handed-in calls and retries with the older scene name only when the error names `scene`
 hooks/core/scene.ts               pure: what the Backdrop shows (none, svg or shader) and the shader's values
 hooks/make-colors.js, .d.ts       the design system's own colour helper (copied, not edited)
 hooks/wallpapers/<id>/index.ts    one folder a wallpaper; index.ts exports its Wallpaper
 hooks/wallpapers/kiki/            Kiki: scene.ts joins hero.ts, world.ts, pixels.ts, sun.ts, types.ts
 hooks/wallpapers/blackhole/       shader.ts (the GPU shader), still.ts (the still SVG), still-data.ts (written by tools/make-still.mjs)
-types/index.d.ts                  the mod's session values ($.state): paneOpen, lookSet, pendingWrites
+types/index.d.ts                  the mod's session values ($.state): paneOpen, lookSet, pendingWrites, turnRunning
 tests/                            plugin tests, run by `claude plugin test .` (*.test.ts and *.test.tsx)
 tools/                            look at a wallpaper without the app, and the checks; see tools/README.md
 tools/tests/                      Node tests, run by `node --test tools/tests/`; blackhole-kit.mjs is a helper, not a test file (`drive()` runs the shader frame by frame and changes the window, the prompt box, the values and the frame time between frames); `blackhole-motion.mjs` is a second helper (measuring functions for turn, ring and drift); the quick tests are blackhole-geometry, blackhole-stability, blackhole-look (the view and the black circle), blackhole-visible (motion and texture the eye can see) and blackhole-measure (the measuring functions on made-up fields); the slow ones are blackhole-flash, blackhole-geometry-flash and blackhole-spin (the turn, the ring, the inward drift)
@@ -46,8 +47,8 @@ PowerShell on Windows. In Git Bash the same commands work.
 
 | Command | What it does |
 |---|---|
-| `claude plugin test .` | Runs `tests/` against the mod through the app's own harness (`claude-code/testing`). |
-| `node --test tools/tests/` | Node tests of the tools, the shader under the stand-in, the still, the manifest. Quick (142 tests on 2026-11-24); the three slow files are left out. |
+| `claude plugin test .` | Runs `tests/` against the mod through the app's own harness (`claude-code/testing`). 372 tests on 2026-11-25. |
+| `node --test tools/tests/` | Node tests of the tools, the shader under the stand-in, the still, the manifest. Quick (142 tests on 2026-11-25); the three slow files are left out. |
 | `$env:SLOW = '1'; node --test tools/tests/` | Adds the three slow files of the black hole shader: the turn, the ring and the inward drift (`blackhole-spin.test.mjs`), 6 seconds of frames on two window sizes and a run in the middle of the tilt's swing (`blackhole-flash.test.mjs`) and the flash estimate while its geometry changes (`blackhole-geometry-flash.test.mjs`). Together they took about two and a half minutes on the owner's PC (2026-11-23). In Git Bash: `SLOW=1 node --test tools/tests/`. |
 | `claude plugin validate .` | The app's own check of manifest, hooks and shader. Prints each shader's cost or the line it refuses. Must pass. |
 | `node tools/sync-manifest.mjs` | Writes `userConfig` in `plugin.json` from the options the code lists. Run after adding a wallpaper or an option. |
@@ -132,6 +133,7 @@ Follow these steps in order. Do not skip the tests-first step or the looking ste
    - `options`: its own options (below), with short keys.
    - `colors(settings)`: what `makeColors` takes: `label`, `roles` (`accent`, `danger`, `success`, `warning`, `pro`), and `light.gray.anchors` and `dark.gray.anchors` (surfaces and text colours). Red stays danger, green success, amber warning. If `makeColors` reports a line starting `Desktop won't paint`, the app ignores the colours; the mod shows that line as a toast.
    - `svg(settings, now)`: the SVG string, at most 124,000 characters. For a shader wallpaper, its still picture. It holds no animation when `settings.motion` is `'off'`. Apply `settings.dim` yourself: paint a black `<rect>` of that opacity over everything, last (`veiled` in `kiki/index.ts`). It must end with `</svg>`: the mod inserts an empty `<g id="kw...">` before the last one when it redraws.
+   - `scheme?`: `'light'` or `'dark'`: the colour scheme the look asks for whatever the person's own mode is, App colors on or off; none leaves the person's (the black hole is `'dark'`).
    - `moves(settings)`: `false` when `settings.motion === 'off'`.
    - `values?(settings)`: shader wallpapers only: the shader's numbers (see the limits above).
    - `scene?(kit, scene)`: shader wallpapers only: the tree, with the literal module path.
@@ -197,7 +199,7 @@ Each rule has its reason. Break none of them without telling the owner.
 - [ ] **When the owner gives a picture, describe it part by part in the contract** and check each part against the first render before showing it.
 - [ ] **Fine characters vanish behind blurred panels.** At a blur of 8 nothing is left of 6 by 10 point characters; a blur of about 1 keeps them. Say so to the owner. Do not change their setting.
 - [ ] **Text in an SVG keeps to a grid only if each run's `textLength` is its character count less one, times the cell, plus one character's advance** (`still.ts`: `(chars.length - 1) * cellW + ADVANCE`), so the browser's own font does not shift the columns.
-- [ ] **Settings are plugin options and nothing else.** A wallpaper's own options carry its name (`<id><Key>`, title "Label: ..."). The pane shows only the current wallpaper's. A command for another wallpaper's option is refused. Never keep a setting in `$.state`; it holds only `paneOpen`, `lookSet` and `pendingWrites`, under `CWallpaper`.
+- [ ] **Settings are plugin options and nothing else.** A wallpaper's own options carry its name (`<id><Key>`, title "Label: ..."). The pane shows only the current wallpaper's. A command for another wallpaper's option is refused. Never keep a setting in `$.state`; it holds only `paneOpen`, `lookSet`, `pendingWrites` and `turnRunning` (the ids of the turns that run: a session value, not a setting), under `CWallpaper`.
 - [ ] **Nobody but the owner can see the app.** Use the preview tools, say plainly what was not seen, and never claim a look was checked in the app.
 - [ ] **Draw everything yourself.** Copy no art, video or font from elsewhere. Fetch nothing from the web. The mod loads no picture or video of the owner's own.
 - [ ] **Redraws are the mod's job, not the wallpaper's.** An `svg` wallpaper that moves is redrawn by `register.tsx` a few seconds after it first shows (3 and 12 seconds, each with a fresh empty `<g id="kw...">` before the last `</svg>`), because the app can leave an image built while the backdrop was hidden standing still. The scene must stay valid with that mark in it. A picture that changes with the clock is redrawn by the minute timer when `svg(settings, now)` gives a different string.

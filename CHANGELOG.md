@@ -2,6 +2,17 @@
 
 Newest first, headed by date. There is no version number: every pushed commit is an update.
 
+## 2026-11-25
+
+- The wallpaper now rests: after five minutes with no prompt and no turn running in the session, it stops moving and shows its still picture, and the black hole stops using the GPU. A prompt, a turn, `/cwallpaper` or a press in the settings pane wakes it. The new setting Rest when idle takes `off`, `5` or `15` minutes (default `5`); set it in the settings pane or on the plugin options screen. `off` never rests.
+- `light` motion now rests Kiki's camera as well as the shooting star.
+- Panels: how clear at 0 now leaves the panels as the app draws them, solid, with no glass.
+- The black hole always asks for the dark scheme, whether App colours follow the wallpaper or not. Kiki is unchanged.
+- A theme error that does not name the scene is shown once as a toast and not retried; the older-build retry keeps the colours.
+- Another plugin's theme is told from this one's by its name, so a theme set by another plugin is no longer mistaken for this one's, and the reverse.
+- The cat spinner hook is registered only when Kiki and the cat spinner are on.
+- Kiki's picture redrawn for a new time of day is now followed by the wake draws.
+
 ## 2026-11-24
 
 - CWallpaper now has a licence (MIT), and its README says what the licence does not cover.
