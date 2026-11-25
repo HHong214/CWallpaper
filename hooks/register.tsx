@@ -20,6 +20,8 @@ import type { EngineInterface, Register, ThemeSetArgs, Timer } from 'claude-code
 
 import { helpText, parseCommand, statusText } from './core/commands'
 import type { Action } from './core/commands'
+import { setLook } from './core/look'
+import type { Look } from './core/look'
 import { optionValue, readSettings } from './core/options'
 import type { OptionValue, Settings } from './core/options'
 import { paneRows } from './core/pane'
@@ -40,6 +42,7 @@ const BRAND = '#D97757'
 const PANE_OPEN = { plugin: 'CWallpaper', key: 'paneOpen' } as const
 const LOOK_SET = { plugin: 'CWallpaper', key: 'lookSet' } as const
 const PENDING = { plugin: 'CWallpaper', key: 'pendingWrites' } as const
+const TURN_RUNNING = { plugin: 'CWallpaper', key: 'turnRunning' } as const
 
 /** One option to write: its manifest key and the value. */
 type Write = { key: string; value: OptionValue }
@@ -179,6 +182,8 @@ const drawnOn = new Set<string>()
 // two minutes. A draw within OWN_DRAW_MS of the mod setting the look or asking
 // for a redraw is its own.
 let ownDrawUntil = -Infinity
+// The order in which theme sets began, so the one that landed last decides `lookSet`.
+let setSeq = 0
 let appWokeAt = -Infinity
 const OWN_DRAW_MS = 2500
 const APP_WAKE_GAP_MS = 120_000
@@ -186,8 +191,6 @@ const APP_WAKE_GAP_MS = 120_000
 // for a redraw when the picture for the time now differs (Kiki's time of day).
 let shown: { id: string; source: string } | undefined
 let ticker: Timer | undefined
-// While above 0, a theme set or clear going through is this mod's own.
-let ownThemeCalls = 0
 
 async function clockNow($: EngineInterface): Promise<number> {
   try {
@@ -254,16 +257,121 @@ function marked(source: string): string {
   return `${source.slice(0, end)}<g id="kw${wakeTag}"/>${source.slice(end)}`
 }
 
+// ------------------------------------------------------------------- rest
+
+// The backdrop rests (the still scene, as motion off gives) once `rest` minutes
+// have passed since the last activity with no turn running. The Backdrop hook
+// decides it from the clock at every draw; one timer asks for the redraw at that
+// moment, and each activity replaces it. A reload of this code keeps the
+// session value `turnRunning` (the ids of the turns that run) but counts the load as activity.
+let lastActive: number | undefined
+// The turns that run, by turnId (a subagent's turn too); the backdrop does not rest while one is left.
+const turns = new Set<string>()
+const turnRunning = (): boolean => turns.size > 0
+let restTimer: Timer | undefined
+let restGen = 0
+
+const restMs = (s: Settings): number => (s.rest === 'off' ? Infinity : Number(s.rest) * 60_000)
+
+/** True when the backdrop rests at `now`. */
+function isResting(s: Settings, now: number): boolean {
+  return s.rest !== 'off' && !turnRunning() && lastActive !== undefined && now - lastActive >= restMs(s)
+}
+
+/** The settings as the scene is drawn at `now`: motion off while it rests. */
+const drawnAs = (s: Settings, now: number): Settings => (isResting(s, now) ? { ...s, motion: 'off' } : s)
+
+/** Replaces the one-shot timer that asks for the redraw at the rest time. */
+async function restSoon($: EngineInterface): Promise<void> {
+  restGen += 1
+  const mine = restGen
+  try {
+    restTimer?.cancel()
+  } catch {
+    // Already gone.
+  }
+  restTimer = undefined
+  const s = settingsNow()
+  if (s.rest === 'off' || turnRunning() || lastActive === undefined) return
+  const wait = Math.max(0, lastActive + restMs(s) - (await clockNow($)))
+  if (mine !== restGen) return
+  try {
+    restTimer = $.clock.after(wait, () => void fallAsleep($).catch(() => undefined))
+  } catch {
+    // No timer: the next draw still rests.
+  }
+}
+
+/** The rest time came: the redraw that makes the app ask the Backdrop again. */
+async function fallAsleep($: EngineInterface): Promise<void> {
+  const s = settingsNow()
+  const now = await clockNow($)
+  if (!s.on || !isResting(s, now)) return
+  wakeCancel()
+  // The still scene is asked for, unless it is the picture shown already.
+  const still = sceneFor({ ...s, motion: 'off' }, WALLPAPERS, now)
+  if (still.kind === 'svg' && shown && shown.id === s.wallpaper && shown.source === still.source) return
+  await redraw($)
+}
+
+/**
+ * A prompt, a turn starting or ending, the command or a press: the session is
+ * active now. `turn` says whether a turn runs from here on, when it changed.
+ * Waking a resting backdrop asks for one redraw at once, and wake draws follow
+ * for a moving svg scene.
+ */
+async function active($: EngineInterface, turn?: { id: string; running: boolean }): Promise<void> {
+  try {
+    const now = await clockNow($)
+    const s = settingsNow()
+    const wasResting = isResting(s, now)
+    lastActive = now
+    if (turn !== undefined) {
+      const had = turns.has(turn.id)
+      if (turn.running) turns.add(turn.id)
+      else turns.delete(turn.id)
+      if (had !== turn.running) await $.state.set(TURN_RUNNING, [...turns]).catch(() => undefined)
+    }
+    await restSoon($)
+    if (wasResting && s.on) {
+      wakeCancel()
+      await redraw($)
+      const w = wallpaperOf(s)
+      if (w.kind === 'svg' && w.moves(s)) wakeSoon($)
+    }
+  } catch {
+    // Not kept past a reload; the backdrop rests a little early or late at worst.
+  }
+}
+
+/** At a start: the turn the last copy saw running, and now as the last activity. */
+async function loadRest($: EngineInterface): Promise<void> {
+  try {
+    const { value } = await $.state.get(TURN_RUNNING)
+    turns.clear()
+    if (Array.isArray(value)) for (const id of value) if (typeof id === 'string') turns.add(id)
+  } catch {
+    turns.clear()
+  }
+  lastActive = await clockNow($)
+  await restSoon($)
+}
+
 /** Starts the minute timer once: a tick redraws only when the picture for now is not the one drawn. */
 function tickSoon($: EngineInterface): void {
   if (ticker) return
   try {
     ticker = $.clock.every(60_000, () => {
       void (async () => {
-        const s = settingsNow()
+        const now = await clockNow($)
+        const s = drawnAs(settingsNow(), now)
         if (!s.on || !shown || shown.id !== s.wallpaper) return
-        const scene = sceneFor(s, WALLPAPERS, await clockNow($))
-        if (scene.kind === 'svg' && scene.source !== shown.source) await redraw($)
+        const scene = sceneFor(s, WALLPAPERS, now)
+        if (scene.kind === 'svg' && scene.source !== shown.source && now >= ownDrawUntil) {
+          await redraw($)
+          // A new picture for a moving scene is followed by wake draws, as a first draw is.
+          if (wallpaperOf(s).moves(s)) wakeSoon($)
+        }
       })().catch(() => undefined)
     })
   } catch {
@@ -278,7 +386,9 @@ function tickSoon($: EngineInterface): void {
  * "not given" and filled with the app's default, a solid-looking panel. At
  * fully clear the tint is see-through as well, for a panel painted from it alone.
  */
-function glassOf(s: Settings): { blur: number; opacity: number; tint?: string } {
+function glassOf(s: Settings): { blur: number; opacity: number; tint?: string } | false {
+  // Fully solid: no glass, the panels are left as the app draws them.
+  if (s.clear <= 0) return false
   const glass = { blur: Math.max(0.1, s.blur), opacity: Math.max(0.01, Math.round((1 - s.clear / 100) * 100) / 100) }
   return s.clear >= 100 ? { ...glass, tint: 'rgba(0,0,0,0)' } : glass
 }
@@ -290,29 +400,20 @@ async function apply($: EngineInterface): Promise<string> {
   const glass = glassOf(s)
   const look: ThemeSetArgs = { backdrop: { scene: w.id, glass } }
   if (s.colors) look.colors = colorsOf(w, s).theme
+  // A wallpaper made for one scheme asks for it, App colors on or off.
+  if (w.scheme) look.overrideColorScheme = w.scheme
   // Setting the look makes the app draw it: that draw is the mod's own.
   await markOwn($)
-  let why: string
-  ownThemeCalls += 1
-  try {
-    try {
-      const set = await $.theme.set(look)
-      why = set.isDrawn ? '' : set.reason
-    } catch {
-      // Claude Code before 2.1.323 names the scene `id` and refuses `scene`.
-      const older = { backdrop: { id: w.id, glass } } as unknown as ThemeSetArgs
-      const set = await $.theme.set(older)
-      why = set.isDrawn ? '' : set.reason
-    }
-  } finally {
-    ownThemeCalls -= 1
-  }
-  await setLookSet($, true)
+  const done = await setLook(
+    { set: l => $.theme.set(l as unknown as ThemeSetArgs) as Promise<{ isDrawn: boolean; reason?: string }>, toast: text => void $.ui.toast(text) },
+    look as unknown as Look,
+  )
   // Wake draws, counted from now, as the app may already have drawn the scene
-  // while the look was being set; a later first draw counts them afresh.
+  // while the look was being set; a later first draw counts them afresh. None
+  // while the backdrop rests.
   wakeCancel()
-  if (why === '' && w.kind === 'svg' && w.moves(s)) wakeSoon($)
-  return why
+  if (done.isSet && done.why === '' && w.kind === 'svg' && w.moves(drawnAs(s, await clockNow($)))) wakeSoon($)
+  return done.why
 }
 
 /**
@@ -323,12 +424,7 @@ async function apply($: EngineInterface): Promise<string> {
  */
 async function takeOff($: EngineInterface): Promise<void> {
   wakeCancel()
-  ownThemeCalls += 1
-  try {
-    await $.theme.clear().catch(() => undefined)
-  } finally {
-    ownThemeCalls -= 1
-  }
+  await $.theme.clear().catch(() => undefined)
   await setLookSet($, false)
 }
 
@@ -366,6 +462,7 @@ async function change($: EngineInterface, writes: Write[]): Promise<string> {
     const now = settingsNow()
     if (now.on) await apply($)
     else if (before.on) await takeOff($)
+    await restSoon($)
     await redraw($)
   } catch {
     // The new copy sets the look at its start.
@@ -387,6 +484,7 @@ async function openPane($: EngineInterface): Promise<boolean> {
 
 /** A press in the pane: writes its option (then `on`, for a wallpaper chosen while off) and shows it at once; the pane stays open. */
 async function press($: EngineInterface, c: Control): Promise<void> {
+  await active($)
   try {
     const why = await change($, [{ key: c.key, value: c.value }, ...(c.also ? [c.also] : [])])
     if (why !== '') $.ui.toast(`The wallpaper ${why}`)
@@ -398,6 +496,7 @@ async function press($: EngineInterface, c: Control): Promise<void> {
 // ---------------------------------------------------------------- commands
 
 async function run($: EngineInterface, args: string): Promise<string> {
+  await active($)
   const action: Action = parseCommand(args, settingsNow(), WALLPAPERS)
   if (action.kind === 'help') return helpText(WALLPAPERS)
   if (action.kind === 'error') return action.message
@@ -423,6 +522,15 @@ async function run($: EngineInterface, args: string): Promise<string> {
 export const register: Register = (on, options) => {
   given = options && typeof options === 'object' ? { ...options } : {}
   written = {}
+  lastActive = undefined
+  turns.clear()
+  try {
+    restTimer?.cancel()
+  } catch {
+    // Already gone.
+  }
+  restTimer = undefined
+  restGen += 1
 
   on('session.start', async ($, e, next) => {
     // This runs at the session's start and again after every reload of this
@@ -439,6 +547,7 @@ export const register: Register = (on, options) => {
     } catch {
       // The look still applies.
     }
+    await loadRest($).catch(() => undefined)
     try {
       // A change the last reload cut in two: its writes still to make, in order.
       const left = await pendingWrites($)
@@ -486,6 +595,20 @@ export const register: Register = (on, options) => {
     }
   })
 
+  // Activity: a prompt, a turn starting, a turn ending (an interrupted one too: `isAborted`).
+  on('prompt.submit', async ($, e, next) => {
+    await active($)
+    return next(e)
+  })
+  on('turn.start', async ($, e, next) => {
+    await active($, { id: String((e as { turnId?: unknown }).turnId ?? ''), running: true })
+    return next(e)
+  })
+  on('turn.complete', async ($, e, next) => {
+    await active($, { id: String((e as { turnId?: unknown }).turnId ?? ''), running: false })
+    return next(e)
+  })
+
   on('ui.close', async ($, e, next) => {
     const closed = await next(e)
     // Closed by the person or a plugin: not opened again after a reload.
@@ -497,13 +620,16 @@ export const register: Register = (on, options) => {
   // cleared by anyone else ends this mod's claim to it, so a later start that
   // finds the option off clears nothing.
   on('theme.set', async ($, e, next) => {
+    const mine = (setSeq += 1)
     const set = await next(e)
-    if (ownThemeCalls === 0) await setLookSet($, false)
+    // Where the set lands: this mod's own marks the look unless a later set began meanwhile (that one decides), another plugin's ends the claim. A failed set throws before this.
+    if (!isOurs($, next.origin?.plugin)) await setLookSet($, false)
+    else if (mine === setSeq) await setLookSet($, true)
     return set
   }).catch(($, e, next) => next(e))
   on('theme.clear', async ($, e, next) => {
     const cleared = await next(e)
-    if (ownThemeCalls === 0) await setLookSet($, false)
+    if (!isOurs($, next.origin?.plugin)) await setLookSet($, false)
     return cleared
   }).catch(($, e, next) => next(e))
 
@@ -515,7 +641,8 @@ export const register: Register = (on, options) => {
     if (!w || !isOurs($, props.plugin)) return next(e)
     if (e.surface !== 'desktop' && e.surface !== 'mobile') return next(e)
     const now = await clockNow($)
-    const s: Settings = { ...settingsNow(), wallpaper: w.id, on: true }
+    // At rest the scene is the still one, as motion off gives it.
+    const s: Settings = { ...drawnAs(settingsNow(), now), wallpaper: w.id, on: true }
     const scene = sceneFor(s, WALLPAPERS, now)
     if (scene.kind === 'none') return next(e)
     const kit = $.ui.resolve(e)
@@ -593,17 +720,30 @@ export const register: Register = (on, options) => {
     )
   })
 
-  on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
-    // The cat's face belongs to the wallpaper the cat is in.
-    const s = settingsNow()
-    if (!s.on) return next(e)
-    let face: string | undefined
+  // The Spinner hook is registered only when the options handed to `register` give a
+  // wallpaper's spinner text (Kiki, on, cat spinner on): otherwise it would sit in the
+  // path of every spinner frame for nothing. A change of option reloads the module.
+  const first = settingsNow()
+  const hasFace = ((): boolean => {
     try {
-      face = wallpaperOf(s).spinner?.(s, String(e.props.mode))
+      return first.on && wallpaperOf(first).spinner?.(first, 'thinking') !== undefined
     } catch {
-      face = undefined
+      return false
     }
-    if (!face) return next(e)
-    return next({ ...e, props: { ...e.props, suffix: `${e.props.suffix} ${face}` } })
-  })
+  })()
+  if (hasFace) {
+    on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
+      // The cat's face belongs to the wallpaper the cat is in.
+      const s = settingsNow()
+      if (!s.on) return next(e)
+      let face: string | undefined
+      try {
+        face = wallpaperOf(s).spinner?.(s, String(e.props.mode))
+      } catch {
+        face = undefined
+      }
+      if (!face) return next(e)
+      return next({ ...e, props: { ...e.props, suffix: `${e.props.suffix} ${face}` } })
+    })
+  }
 }

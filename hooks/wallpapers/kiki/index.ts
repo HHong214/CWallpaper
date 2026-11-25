@@ -11,9 +11,9 @@ const TIMES = ['auto', 'day', 'sunset', 'night'] as const
 type Time = (typeof TIMES)[number]
 
 // What `light` rests, for a calmer scene: the shooting star, the one sudden
-// streak. The sea, the clouds, the stars, the moon, the lighthouse, the wind,
-// the camera's gentle bob and Kiki's own float all still move.
-const LIGHT = { stillShoot: true } as const
+// streak, and the camera's gentle bob. The sea, the clouds, the stars, the moon,
+// the lighthouse, the wind and Kiki's own float all still move.
+const LIGHT = { stillShoot: true, stillCam: true } as const
 
 // The app's colors, for the design system's own helper: a near-black night
 // indigo in dark mode, warm paper in light mode. The roles keep their meaning

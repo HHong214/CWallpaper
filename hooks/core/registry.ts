@@ -29,6 +29,8 @@ export type Wallpaper = {
   kind: 'svg' | 'shader'
   /** Its own options, with SHORT keys ('time'); the manifest keys are `<id><Key>`. */
   options: readonly OptionSpec[]
+  /** The colour scheme the look asks for whatever the person's own mode is; none leaves the person's. */
+  scheme?: 'light' | 'dark'
   /** What `makeColors` takes (its `label`, its `roles`, its anchors). */
   colors(settings: Settings): object
   /** The SVG, at most 124,000 characters; a shader wallpaper's still picture. No animation with motion off. */

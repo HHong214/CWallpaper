@@ -75,6 +75,8 @@ export const blackhole: Wallpaper = Object.freeze<Wallpaper>({
     },
   ],
   colors: () => HOLE,
+  // Painted on near-black, so the app is dark with it, App colors on or off.
+  scheme: 'dark',
   // The still picture, the same whatever the motion and the clock.
   svg: s => {
     try {

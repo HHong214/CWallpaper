@@ -78,6 +78,7 @@ function rows(settings: Settings, wallpapers: readonly Wallpaper[]): PaneRow[] {
     },
     toggleRow('Wallpaper shown', 'on', s.on !== false),
     choiceRow('Motion', 'motion', common('motion').choices ?? [], s.motion),
+    choiceRow('Rest after (minutes)', 'rest', common('rest').choices ?? [], s.rest),
     dialRow('Panels see-through', 'clear', common('clear'), num('clear'), STEPS.clear ?? 10, '%'),
     dialRow('Blur behind panels', 'blur', common('blur'), num('blur'), STEPS.blur ?? 4, ''),
     dialRow('Scene dimming', 'dim', common('dim'), num('dim'), STEPS.dim ?? 10, '%'),

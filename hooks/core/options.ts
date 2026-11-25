@@ -26,11 +26,15 @@ export type OptionSpec = {
 
 export type Motion = 'smooth' | 'light' | 'off'
 
+/** Minutes of no activity before the backdrop rests, or 'off'. */
+export type Rest = 'off' | '5' | '15'
+
 /** The settings, as `readSettings` reads them. */
 export type Settings = {
   on: boolean
   wallpaper: string
   motion: Motion
+  rest: Rest
   clear: number
   blur: number
   dim: number
@@ -51,12 +55,20 @@ export const COMMON: readonly OptionSpec[] = Object.freeze([
   spec({
     key: 'motion',
     title: 'Motion',
-    description: "How the wallpaper moves: smooth (all of it), light (calmer: Kiki's shooting star rests, the black hole turns more slowly) or off (still).",
+    description: "How the wallpaper moves: smooth (all of it), light (calmer: Kiki's shooting star and camera rest, the black hole turns more slowly) or off (still).",
     type: 'choice',
     default: 'smooth',
     choices: ['smooth', 'light', 'off'],
   }),
-  spec({ key: 'clear', title: 'Panels: how clear', description: 'How see-through the app panels are over the wallpaper: 0 is solid, 100 is clear.', type: 'number', default: 100, min: 0, max: 100 }),
+  spec({
+    key: 'rest',
+    title: 'Rest when idle (minutes)',
+    description: 'After this many minutes with no prompt and no turn running in the session, the wallpaper stops moving and shows its still picture (the black hole stops using the GPU). A prompt, a turn, /cwallpaper or a press in the settings pane wakes it. off never rests.',
+    type: 'choice',
+    default: '5',
+    choices: ['off', '5', '15'],
+  }),
+  spec({ key: 'clear', title: 'Panels: how clear', description: 'How see-through the app panels are over the wallpaper: 100 is clear, 0 leaves the panels as the app draws them, solid, with no glass.', type: 'number', default: 100, min: 0, max: 100 }),
   spec({ key: 'blur', title: 'Panels: blur', description: 'How far the panels blur the wallpaper behind them, 0 to 40.', type: 'number', default: 0, min: 0, max: 40 }),
   spec({ key: 'dim', title: 'Scene: dim', description: 'How much the wallpaper itself is darkened so words stand clear of it, 0 to 80.', type: 'number', default: 30, min: 0, max: 80 }),
   spec({ key: 'colors', title: 'App colors follow the wallpaper', description: 'Repaint the app in colors that match the wallpaper.', type: 'boolean', default: true }),
@@ -141,6 +153,7 @@ export function readSettings(options: unknown, wallpapers: readonly HasOptions[]
     on: pick('on') as boolean,
     wallpaper: typeof named === 'string' && list.some(w => w.id === named) ? named : 'kiki',
     motion: pick('motion') as Motion,
+    rest: pick('rest') as Rest,
     clear: pick('clear') as number,
     blur: pick('blur') as number,
     dim: pick('dim') as number,

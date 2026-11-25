@@ -38,7 +38,7 @@
     "motion": {
       "type": "string",
       "title": "Motion",
-      "description": "How the wallpaper moves: smooth (all of it), light (calmer: Kiki's shooting star rests, the black hole turns more slowly) or off (still).",
+      "description": "How the wallpaper moves: smooth (all of it), light (calmer: Kiki's shooting star and camera rest, the black hole turns more slowly) or off (still).",
       "default": "smooth",
       "options": [
         "smooth",
@@ -46,10 +46,21 @@
         "off"
       ]
     },
+    "rest": {
+      "type": "string",
+      "title": "Rest when idle (minutes)",
+      "description": "After this many minutes with no prompt and no turn running in the session, the wallpaper stops moving and shows its still picture (the black hole stops using the GPU). A prompt, a turn, /cwallpaper or a press in the settings pane wakes it. off never rests.",
+      "default": "5",
+      "options": [
+        "off",
+        "5",
+        "15"
+      ]
+    },
     "clear": {
       "type": "number",
       "title": "Panels: how clear",
-      "description": "How see-through the app panels are over the wallpaper: 0 is solid, 100 is clear.",
+      "description": "How see-through the app panels are over the wallpaper: 100 is clear, 0 leaves the panels as the app draws them, solid, with no glass.",
       "default": 100,
       "min": 0,
       "max": 100
