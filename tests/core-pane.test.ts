@@ -23,6 +23,7 @@
 //          `current`; each carries `also` while the wallpaper is off
 //       2. on/off: ONE control, key 'on', value = !settings.on
 //       3. motion: three controls, values smooth, light, off; the setting's is `current`
+//          then rest: three controls, values off, 5, 15; the setting's is `current` (rest-and-fixes.test.tsx)
 //       4. clear, 5. blur, 6. dim: two controls each, [minus, plus], labelled '-' and '+', with the value they would
 //          write: the setting less / plus 1.9.0's step (clear 10, blur 4, dim 10), held inside the range (0-100,
 //          0-40, 0-80), so at an end the button writes the end again
@@ -69,6 +70,7 @@ const settings = (over: Over = {}, kiki: Over = {}, stand: Over = {}) => {
     on: true,
     wallpaper: 'kiki',
     motion: 'smooth',
+    rest: '5',
     clear: 100,
     blur: 0,
     dim: 30,
@@ -86,9 +88,9 @@ const names = (list: Row[]): string[] => list.map(nameOf)
 const controlsOf = (list: Row[], key: string): Control[] => list.find(r => r.kind === 'controls' && nameOf(r) === key)?.controls ?? []
 const allControls = (list: Row[]): Control[] => list.flatMap(r => r.controls ?? [])
 
-const COMMON_ROWS = ['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors']
+const COMMON_ROWS = ['wallpaper', 'on', 'motion', 'rest', 'clear', 'blur', 'dim', 'colors']
 
-test('the rows run in order: wallpapers, on, motion, the three numbers, colors, a heading, the wallpaper\'s own options', () => {
+test('the rows run in order: wallpapers, on, motion, rest, the three numbers, colors, a heading, the wallpaper\'s own options', () => {
   expect(names(rows())).toEqual([...COMMON_ROWS, 'heading', 'kikiTime', 'kikiSpinner'])
   // Every row of controls is one key, and every control has a key, a value and a label.
   for (const r of rows()) {

@@ -117,12 +117,12 @@ test('a start with the option on off, and no look set by this mod, clears nothin
   expect(seen.looks.length).toBe(0)
 })
 
-test('every session value is the plugin\'s own: { plugin: \'CWallpaper\', key } with the keys paneOpen, lookSet and pendingWrites', async ($, on) => {
+test('every session value is the plugin\'s own: { plugin: \'CWallpaper\', key } with the keys paneOpen, lookSet, pendingWrites, lastActive and turnRunning', async ($, on) => {
   const seen = await begin($, on)
   await said($, 'motion light')
   await said($, 'settings')
   expect(seen.stateAsked.length > 0).toBe(true)
-  for (const asked of seen.stateAsked) expect([asked, /^CWallpaper\/(paneOpen|lookSet|pendingWrites)$/.test(asked)]).toEqual([asked, true])
+  for (const asked of seen.stateAsked) expect([asked, /^CWallpaper\/(paneOpen|lookSet|pendingWrites|lastActive|turnRunning)$/.test(asked)]).toEqual([asked, true])
   expect(seen.stateAsked.some(a => a.startsWith('wallpaper/'))).toBe(false)
 })
 

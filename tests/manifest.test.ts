@@ -59,11 +59,13 @@ async function loadWith($: any, on: any): Promise<string> {
   }
 }
 
-test('the list the manifest is compared with holds the eleven options in the contract\'s order', () => {
-  expect(specs.map(s => s.key)).toEqual(['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'kikiTime', 'kikiSpinner', 'blackholeSize', 'blackholeCalm'])
-  expect(specs.length).toBe(11)
+test('the list the manifest is compared with holds the twelve options in the contract\'s order', () => {
+  expect(specs.map(s => s.key)).toEqual(['wallpaper', 'on', 'motion', 'rest', 'clear', 'blur', 'dim', 'colors', 'kikiTime', 'kikiSpinner', 'blackholeSize', 'blackholeCalm'])
+  expect(specs.length).toBe(12)
   expect(specs.some(s => s.key === 'fps' || s.title === 'Show FPS')).toBe(false)
-  expect(specs.map(s => s.title)).toEqual([
+  // The title of `rest` is the builder's to word.
+  expect(typeof specs[3]?.title).toBe('string')
+  expect(specs.filter(s => s.key !== 'rest').map(s => s.title)).toEqual([
     'Wallpaper',
     'Wallpaper: on',
     'Motion',
@@ -76,13 +78,14 @@ test('the list the manifest is compared with holds the eleven options in the con
     'Black hole: size',
     'Black hole: calmer motion',
   ])
-  expect(specs.map(s => s.type)).toEqual(['choice', 'boolean', 'choice', 'number', 'number', 'number', 'boolean', 'choice', 'boolean', 'choice', 'boolean'])
-  expect(specs.map(s => s.default)).toEqual(['kiki', true, 'smooth', 100, 0, 30, true, 'auto', true, 'medium', false])
-  expect(specs[9]?.choices).toEqual(['small', 'medium', 'large'])
+  expect(specs.map(s => s.type)).toEqual(['choice', 'boolean', 'choice', 'choice', 'number', 'number', 'number', 'boolean', 'choice', 'boolean', 'choice', 'boolean'])
+  expect(specs.map(s => s.default)).toEqual(['kiki', true, 'smooth', '5', 100, 0, 30, true, 'auto', true, 'medium', false])
+  expect(specs[10]?.choices).toEqual(['small', 'medium', 'large'])
   expect(specs[0]?.choices).toEqual(['kiki', 'blackhole'])
   expect(specs[2]?.choices).toEqual(['smooth', 'light', 'off'])
-  expect(specs[7]?.choices).toEqual(['auto', 'day', 'sunset', 'night'])
-  expect([specs[3]?.min, specs[3]?.max, specs[4]?.min, specs[4]?.max, specs[5]?.min, specs[5]?.max]).toEqual([0, 100, 0, 40, 0, 80])
+  expect(specs[3]?.choices).toEqual(['off', '5', '15'])
+  expect(specs[8]?.choices).toEqual(['auto', 'day', 'sunset', 'night'])
+  expect([specs[4]?.min, specs[4]?.max, specs[5]?.min, specs[5]?.max, specs[6]?.min, specs[6]?.max]).toEqual([0, 100, 0, 40, 0, 80])
 })
 
 // One test per boolean and number option: declared, with this title and this type.

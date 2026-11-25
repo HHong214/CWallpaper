@@ -12,8 +12,8 @@
 //     choices?: readonly string[]                  a choice only
 //     min?: number; max?: number                   a number only
 //   }
-//   COMMON: readonly OptionSpec[]                  the seven common options, in this order: wallpaper, on, motion,
-//                                                  clear, blur, dim, colors (there is no `fps`: the frames-a-second
+//   COMMON: readonly OptionSpec[]                  the eight common options, in this order: wallpaper, on, motion,
+//                                                  rest, clear, blur, dim, colors (there is no `fps`: the frames-a-second
 //                                                  count was removed). `wallpaper` has type 'choice' and
 //                                                  default 'kiki'; the registered ids are its `choices` only in
 //                                                  optionSpecs' answer (COMMON itself does not know the registry).
@@ -24,7 +24,7 @@
 //                                                  `wallpaper` option gets `choices` = the ids, in order. COMMON is
 //                                                  never changed by a call.
 //   readSettings(options: unknown, wallpapers: readonly { id: string; options: readonly OptionSpec[] }[]): Settings
-//     Settings = { on: boolean; wallpaper: string; motion: 'smooth' | 'light' | 'off'; clear: number;
+//     Settings = { on: boolean; wallpaper: string; motion: 'smooth' | 'light' | 'off'; rest: 'off' | '5' | '15'; clear: number;
 //                  blur: number; dim: number; colors: boolean;      (no `fps`, whatever an old stored option holds)
 //                  own: Record<wallpaperId, Record<shortKey, boolean | string | number>> }
 //     reads the manifest keys of `options` (the object the engine hands `register(on, options)`). A missing,
@@ -69,6 +69,7 @@ const DEFAULTS = {
   on: true,
   wallpaper: 'kiki',
   motion: 'smooth',
+  rest: '5',
   clear: 100,
   blur: 0,
   dim: 30,
@@ -80,11 +81,12 @@ const read = (options: unknown) => readSettings(options as never, WALLPAPERS)
 
 // ------------------------------------------------------------------ COMMON
 
-test('COMMON lists the seven common options in order, with the titles and kinds the contract gives', () => {
-  expect(COMMON.map(o => o.key)).toEqual(['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors'])
-  expect(COMMON.length).toBe(7)
-  expect(COMMON.map(o => o.type)).toEqual(['choice', 'boolean', 'choice', 'number', 'number', 'number', 'boolean'])
-  expect(COMMON.map(o => o.title)).toEqual([
+test('COMMON lists the eight common options in order, with the titles and kinds the contract gives', () => {
+  expect(COMMON.map(o => o.key)).toEqual(['wallpaper', 'on', 'motion', 'rest', 'clear', 'blur', 'dim', 'colors'])
+  expect(COMMON.length).toBe(8)
+  expect(COMMON.map(o => o.type)).toEqual(['choice', 'boolean', 'choice', 'choice', 'number', 'number', 'number', 'boolean'])
+  // The title of `rest` is the builder's to word (rest-and-fixes.test.tsx pins that it is a string).
+  expect(COMMON.filter(o => o.key !== 'rest').map(o => o.title)).toEqual([
     'Wallpaper',
     'Wallpaper: on',
     'Motion',
@@ -110,8 +112,9 @@ test('the fps option is gone, and no description names /wallpaper or the frames 
 
 test('COMMON holds 1.9.0\'s defaults, the motion choices and the three ranges', () => {
   const by = (key: string) => COMMON.find(o => o.key === key)
-  expect(COMMON.map(o => o.default)).toEqual(['kiki', true, 'smooth', 100, 0, 30, true])
+  expect(COMMON.map(o => o.default)).toEqual(['kiki', true, 'smooth', '5', 100, 0, 30, true])
   expect(by('motion')?.choices).toEqual(['smooth', 'light', 'off'])
+  expect(by('rest')?.choices).toEqual(['off', '5', '15'])
   expect([by('clear')?.min, by('clear')?.max]).toEqual([0, 100])
   expect([by('blur')?.min, by('blur')?.max]).toEqual([0, 40])
   expect([by('dim')?.min, by('dim')?.max]).toEqual([0, 80])
@@ -152,7 +155,7 @@ test('optionSpecs gives a wallpaper\'s own options a title that starts with its 
 test('optionSpecs follows the order of the wallpapers it is given, and leaves COMMON alone', () => {
   const before = JSON.stringify(COMMON)
   const flipped = optionSpecs([HOLE, KIKI] as never)
-  expect(flipped.map(s => s.key).slice(7)).toEqual(['blackholeSpeed', 'kikiTime', 'kikiSpinner'])
+  expect(flipped.map(s => s.key).slice(8)).toEqual(['blackholeSpeed', 'kikiTime', 'kikiSpinner'])
   expect(flipped[0]?.choices).toEqual(['blackhole', 'kiki'])
   optionSpecs(WALLPAPERS)
   expect(JSON.stringify(COMMON)).toBe(before)
@@ -166,7 +169,7 @@ test('readSettings gives 1.9.0\'s defaults for no options and for junk in place 
   for (const junk of [undefined, null, 'text', 7, true, [], {}, () => 1]) {
     expect([junk, read(junk)]).toEqual([junk, DEFAULTS])
   }
-  expect(Object.keys(read({})).sort()).toEqual(['blur', 'clear', 'colors', 'dim', 'motion', 'on', 'own', 'wallpaper'])
+  expect(Object.keys(read({})).sort()).toEqual(['blur', 'clear', 'colors', 'dim', 'motion', 'on', 'own', 'rest', 'wallpaper'])
 })
 
 test('readSettings reads every valid value as given', () => {
@@ -175,7 +178,7 @@ test('readSettings reads every valid value as given', () => {
     kikiTime: 'night', kikiSpinner: false, blackholeSpeed: 8,
   })
   expect(got).toEqual({
-    on: false, wallpaper: 'blackhole', motion: 'light', clear: 40, blur: 12, dim: 0, colors: false,
+    on: false, wallpaper: 'blackhole', motion: 'light', rest: '5', clear: 40, blur: 12, dim: 0, colors: false,
     own: { kiki: { time: 'night', spinner: false }, blackhole: { speed: 8 } },
   })
   for (const motion of ['smooth', 'light', 'off']) expect(read({ motion }).motion).toBe(motion)
@@ -229,7 +232,7 @@ test('readSettings ignores an fps value still stored in old options, whatever it
   const mixed = read({ fps: true, motion: 'light', dim: 10, kikiTime: 'night' })
   expect('fps' in mixed).toBe(false)
   expect(mixed).toEqual({ ...DEFAULTS, motion: 'light', dim: 10, own: { kiki: { time: 'night', spinner: true }, blackhole: { speed: 5 } } })
-  expect(Object.keys(mixed).sort()).toEqual(['blur', 'clear', 'colors', 'dim', 'motion', 'on', 'own', 'wallpaper'])
+  expect(Object.keys(mixed).sort()).toEqual(['blur', 'clear', 'colors', 'dim', 'motion', 'on', 'own', 'rest', 'wallpaper'])
 })
 
 test('readSettings reads a choice outside its choices as its default', () => {

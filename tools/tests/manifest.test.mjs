@@ -119,14 +119,16 @@ describe('plugin.json userConfig is what optionSpecs(WALLPAPERS) lists', () => {
     }
   })
 
-  it('has the eleven options of the contract: the seven common and Kiki\'s, then the black hole\'s size and calm', async () => {
+  it('has the twelve options of the contract: the eight common and Kiki\'s, then the black hole\'s size and calm', async () => {
     const list = await specs()
-    assert.deepEqual(list.map(s => s.key), ['wallpaper', 'on', 'motion', 'clear', 'blur', 'dim', 'colors', 'kikiTime', 'kikiSpinner', 'blackholeSize', 'blackholeCalm'])
-    assert.equal(list.length, 11)
-    assert.deepEqual(list.slice(9).map(s => s.title), ['Black hole: size', 'Black hole: calmer motion'])
-    assert.deepEqual(list[9].choices, ['small', 'medium', 'large'])
-    assert.equal(list[9].default, 'medium')
-    assert.equal(list[10].default, false)
+    assert.deepEqual(list.map(s => s.key), ['wallpaper', 'on', 'motion', 'rest', 'clear', 'blur', 'dim', 'colors', 'kikiTime', 'kikiSpinner', 'blackholeSize', 'blackholeCalm'])
+    assert.equal(list.length, 12)
+    assert.deepEqual(list[3].choices, ['off', '5', '15'])
+    assert.equal(list[3].default, '5')
+    assert.deepEqual(list.slice(10).map(s => s.title), ['Black hole: size', 'Black hole: calmer motion'])
+    assert.deepEqual(list[10].choices, ['small', 'medium', 'large'])
+    assert.equal(list[10].default, 'medium')
+    assert.equal(list[11].default, false)
   })
 })
 
@@ -151,7 +153,7 @@ describe('plugin.json', () => {
   it('has no fps option, in the manifest or in what its descriptions say', () => {
     const { userConfig } = read('.claude-plugin/plugin.json')
     assert.ok(!('fps' in userConfig), 'the fps option was removed')
-    assert.equal(Object.keys(userConfig).length, 11)
+    assert.equal(Object.keys(userConfig).length, 12)
     for (const [key, entry] of Object.entries(userConfig)) {
       assert.ok(entry.title !== 'Show FPS', `${key}: no Show FPS title`)
       assert.doesNotMatch(`${entry.title} ${entry.description}`, /fps|frames a second|frame rate/i, `${key} mentions the frames a second`)
