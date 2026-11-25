@@ -30,7 +30,7 @@ const settingsOf = (motion: string, time: string) =>
     own: { kiki: { time, spinner: true }, blackhole: {} },
   }) as never
 
-test('every moving part has its rule, the sea and clouds glide, and motion light rests only the shooting star', () => {
+test('every moving part has its rule, the sea and clouds glide, and motion light rests the shooting star and the camera', () => {
   // The picture Kiki's wallpaper makes at night in a motion, as the mod draws it (without the wake marks).
   const picture = (motion: string): string => bare(kiki.svg(settingsOf(motion, 'night'), NOON))
   const rects = (s: string): number => (s.match(/v\d+h-\d+z/g) ?? []).length
@@ -107,8 +107,8 @@ test('every moving part has its rule, the sea and clouds glide, and motion light
   expect(unruled(light)).toEqual([])
   // Light: calmer, not still. The sea's crests glide and the cloud strips
   // drift just as in smooth (the same rules, the strips each drawn twice);
-  // only the shooting star rests; the lighthouse sweeps and the camera bobs as
-  // in smooth. Everything it animates smooth animates too, and Kiki and the
+  // the shooting star and the camera rest; the lighthouse sweeps as in
+  // smooth. Everything it animates smooth animates too, and Kiki and the
   // cat move the same in both.
   expect(light.includes('<use')).toBe(true)
   for (const id of ['w-cf', 'w-cn']) expect(light.includes(`<use href="#${id}"/>`)).toBe(true)
@@ -122,11 +122,12 @@ test('every moving part has its rule, the sea and clouds glide, and motion light
   expect(sweep(light)).toEqual(sweep(smooth))
   expect(flashes(light).some(r => r.startsWith('w-ss '))).toBe(false)
   expect(keyframesOf(light, 'w-ss')).toBe('')
-  // The camera bobs in light as in smooth, by the same rule (read in the
-  // sheet's text: the reduced-motion rule reuses the camera's class).
+  // The camera bobs in smooth and rests in light (W5): light holds no camera
+  // rule and no camera keyframes (read in the sheet's text: the
+  // reduced-motion rule reuses the camera's class).
   expect(sheetOf(smooth).includes('{animation:w-cam ')).toBe(true)
-  expect(keyframesOf(light, 'w-cam')).toBe(keyframesOf(smooth, 'w-cam'))
-  expect(sheetOf(light).includes('{animation:w-cam 4.2s ease-in-out infinite alternate -3.15s}')).toBe(true)
+  expect(keyframesOf(light, 'w-cam')).toBe('')
+  expect(sheetOf(light).includes('{animation:w-cam ')).toBe(false)
   expect([...animated(light)].every(c => animated(smooth).has(c))).toBe(true)
   expect(animated(light).size < animated(smooth).size).toBe(true)
   expect(rects(light) < rects(smooth)).toBe(true)
@@ -239,7 +240,7 @@ test('every moving part has its rule, the sea and clouds glide, and motion light
   expect(off.length > 0 && off.length < light.length).toBe(true)
 })
 
-test('the sea keeps no glitter column, the small clouds are round underneath, and the camera bobs the world but not Kiki', () => {
+test('the sea keeps no glitter column, the small clouds are round underneath, and the camera bobs the world but not Kiki in smooth and rests in light', () => {
   const picture = (phase: string, motion: string): string => bare(kiki.svg(settingsOf(motion, phase), NOON))
   const sheetOf = (s: string): string => [...s.matchAll(/<style>([\s\S]*?)<\/style>/g)].map(m => m[1] ?? '').join('')
   // The rules a class runs, the reduced-motion overrides left out.
@@ -311,9 +312,13 @@ test('the sea keeps no glitter column, the small clouds are round underneath, an
       }
       const rules = rulesOf(s)
       const cams = [...rules.values()].filter(isCam)
-      {
-        // Smooth and light alike (the bob was asked for, and light only rests
-        // the beam and the shooting star). The camera: one rule, on Kiki's own float's beat (hero.ts h-fl: 4.2 s
+      if (motion === 'light') {
+        // Light rests the camera as well as the shooting star (W5): no camera
+        // rule and no camera keyframes.
+        expect(cams).toEqual([])
+        expect(sheetOf(s).includes('@keyframes w-cam')).toBe(false)
+      } else {
+        // Smooth. The camera: one rule, on Kiki's own float's beat (hero.ts h-fl: 4.2 s
         // each way, -2.1 s) and an eighth of a round ahead of her, so the two
         // never drift apart; translateY only, three quarters of a pixel each way.
         expect(cams).toEqual(['w-cam 4.2s ease-in-out infinite alternate -3.15s'])

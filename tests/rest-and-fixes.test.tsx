@@ -27,6 +27,7 @@ import { COMMON, readSettings } from '../hooks/core/options'
 import { paneRows } from '../hooks/core/pane'
 import { WALLPAPERS } from '../hooks/core/registry'
 import { sceneFor } from '../hooks/core/scene'
+import { register } from '../hooks/register'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Ctx = any
@@ -542,53 +543,46 @@ test('W-d5: motion smooth is byte-identical to today\'s, camera included (pins t
 
 // ================================================================ W-d6: the Spinner hook
 
-// A probe above every other plugin: it draws the list of plugins whose `ui.render` hooks the Spinner passed beneath it.
-const PROBE = {
-  name: 'probe',
-  tier: 'prepend',
-  register(on: Ctx) {
-    on('ui.render', { component: 'Spinner' }, async ($: Ctx, e: Ctx, next: Ctx) => {
-      await next(e)
-      const { Text } = $.ui.resolve(e)
-      const links = (next.trace as { plugin: string }[]).map(t => t.plugin).join(',')
-      return <Text>{`links:${links}`}</Text>
-    })
-  },
+// Pinned at registration, not through the trace: a hook that does nothing cannot be told from no hook by what is
+// drawn. Each test calls `register` itself with a recording `on` and the options of the case, and reads which
+// events and filters the mod registered. The recorder answers with an object that has `catch`, since the mod
+// chains `.catch` on some hooks.
+type Registered = { event: unknown; filter: unknown }
+function registeredWith(options: Record<string, unknown>): Registered[] {
+  const calls: Registered[] = []
+  const recorder = (event: unknown, ...rest: unknown[]) => {
+    calls.push({ event, filter: typeof rest[0] === 'function' ? undefined : rest[0] })
+    const handle: Ctx = { catch: () => handle }
+    return handle
+  }
+  ;(register as Ctx)(recorder, options)
+  return calls
 }
+const renderHooks = (calls: Registered[], component: string): number =>
+  calls.filter(c => c.event === 'ui.render' && (c.filter as { component?: unknown } | undefined)?.component === component).length
 
-async function spinnerLinks($: Ctx, on: Ctx): Promise<string> {
-  on('ui.render', { component: 'Spinner' }, (_: Ctx, e: Ctx) => {
-    const { Text } = _.ui.resolve(e)
-    return <Text>spinning</Text>
-  })
-  await begin($, on)
-  const ui = await $.ui.mount({ ...SPINNER, surface: 'desktop' })
-  const found = (await ui.find({ type: 'Text', text: /^links:/ })) as Node | undefined
-  await ui.unmount()
-  return String(found?.text ?? '')
-}
-
-test('W-d6: with the black hole no ui.render hook of this mod is registered on Spinner', { options: { wallpaper: 'blackhole' }, plugins: [PROBE] as never }, async ($, on) => {
-  const links = await spinnerLinks($, on)
-  expect(links.startsWith('links:')).toBe(true)
-  expect(links.split(/[:,]/).includes('CWallpaper')).toBe(false)
+test('W-d6: with the black hole no ui.render hook of this mod is registered on Spinner', () => {
+  const calls = registeredWith({ wallpaper: 'blackhole' })
+  expect(renderHooks(calls, 'Backdrop')).toBe(1)
+  expect(renderHooks(calls, 'Spinner')).toBe(0)
 })
 
-test('W-d6: with Kiki and the cat spinner off no ui.render hook of this mod is registered on Spinner', { options: { kikiSpinner: false }, plugins: [PROBE] as never }, async ($, on) => {
-  const links = await spinnerLinks($, on)
-  expect(links.startsWith('links:')).toBe(true)
-  expect(links.split(/[:,]/).includes('CWallpaper')).toBe(false)
+test('W-d6: with Kiki and the cat spinner off no ui.render hook of this mod is registered on Spinner', () => {
+  const calls = registeredWith({ kikiSpinner: false })
+  expect(renderHooks(calls, 'Backdrop')).toBe(1)
+  expect(renderHooks(calls, 'Spinner')).toBe(0)
 })
 
-test('W-d6: with Kiki and the wallpaper off no ui.render hook of this mod is registered on Spinner', { options: { on: false }, plugins: [PROBE] as never }, async ($, on) => {
-  const links = await spinnerLinks($, on)
-  expect(links.startsWith('links:')).toBe(true)
-  expect(links.split(/[:,]/).includes('CWallpaper')).toBe(false)
+test('W-d6: with Kiki and the wallpaper off no ui.render hook of this mod is registered on Spinner', () => {
+  const calls = registeredWith({ on: false })
+  expect(renderHooks(calls, 'Backdrop')).toBe(1)
+  expect(renderHooks(calls, 'Spinner')).toBe(0)
 })
 
-test('W-d6: with Kiki, on, and the cat spinner on, the Spinner hook is registered (pins today)', { plugins: [PROBE] as never }, async ($, on) => {
-  const links = await spinnerLinks($, on)
-  expect(links.split(/[:,]/).includes('CWallpaper')).toBe(true)
+test('W-d6: with Kiki, on, and the cat spinner on, exactly one Spinner hook is registered (pins today)', () => {
+  const calls = registeredWith({})
+  expect(renderHooks(calls, 'Backdrop')).toBe(1)
+  expect(renderHooks(calls, 'Spinner')).toBe(1)
 })
 
 // ================================================================ W-d8: the black hole asks for the dark scheme
