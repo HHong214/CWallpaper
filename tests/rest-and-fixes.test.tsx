@@ -246,6 +246,85 @@ for (const [name, options] of CASES) {
       expect(['redraws at the rest time', rig.redraws() - before]).toEqual(['redraws at the rest time', 1])
       expect(['still at the rest time', isRested(await draw($, name), name, options, clock.now())]).toEqual(['still at the rest time', true])
     })
+
+    // A subagent's turn also comes as turn.start and turn.complete, with its agentId and its own turnId. A turn runs
+    // from its start to its end, whichever agent it belongs to, and the backdrop rests only when none runs.
+    const subStart = ($: Ctx, turnId: string) => $.turn.start({ text: 'sub', turnId, agentId: 'a1' } as never)
+    const subComplete = ($: Ctx, turnId: string) =>
+      $.turn.complete({ answer: 'done', durationMs: 10, isAborted: false, turnId, reason: 'answer', agentId: 'a1' } as never)
+
+    test('W-d1: blackhole does not rest while the main turn runs after a subagent\'s turn has ended, and rests five minutes after the main turn ends', { options: options as never }, async ($, on) => {
+      const rig = await begin($, on)
+      const { clock } = rig
+      await draw($, name)
+      await clock.advance(30_000)
+      await turnStart($, 't1')
+      await clock.advance(MIN)
+      await subStart($, 's1')
+      await clock.advance(MIN)
+      await subComplete($, 's1')
+      const subDone = clock.now()
+      const before = rig.redraws()
+      for (const at of [6, 10]) {
+        await clock.set(subDone + at * MIN)
+        expect([`moving ${at} min after the subagent's end`, isMoving(await draw($, name), name)]).toEqual([`moving ${at} min after the subagent's end`, true])
+        expect([`redraws ${at} min after the subagent's end`, rig.redraws() - before]).toEqual([`redraws ${at} min after the subagent's end`, 0])
+      }
+      await turnComplete($, 't1')
+      const done = clock.now()
+      await clock.set(done + 5 * MIN - 1000)
+      expect(['moving just before', isMoving(await draw($, name), name)]).toEqual(['moving just before', true])
+      const mark = rig.redraws()
+      await clock.set(done + 5 * MIN)
+      expect(['redraws at the rest time', rig.redraws() - mark]).toEqual(['redraws at the rest time', 1])
+      expect(['still at the rest time', isRested(await draw($, name), name, options, clock.now())]).toEqual(['still at the rest time', true])
+    })
+
+    test('W-d1: blackhole does not rest while a subagent\'s turn runs after the main turn has ended, and rests five minutes after the subagent\'s end', { options: options as never }, async ($, on) => {
+      const rig = await begin($, on)
+      const { clock } = rig
+      await draw($, name)
+      await clock.advance(30_000)
+      await turnStart($, 't1')
+      await clock.advance(30_000)
+      await subStart($, 's1')
+      await clock.advance(MIN)
+      await turnComplete($, 't1')
+      const mainDone = clock.now()
+      await clock.set(mainDone + 6 * MIN)
+      expect(['moving 6 min after the main turn\'s end', isMoving(await draw($, name), name)]).toEqual(['moving 6 min after the main turn\'s end', true])
+      await subComplete($, 's1')
+      const done = clock.now()
+      await clock.set(done + 5 * MIN - 1000)
+      expect(['moving just before', isMoving(await draw($, name), name)]).toEqual(['moving just before', true])
+      const mark = rig.redraws()
+      await clock.set(done + 5 * MIN)
+      expect(['redraws at the rest time', rig.redraws() - mark]).toEqual(['redraws at the rest time', 1])
+      expect(['still at the rest time', isRested(await draw($, name), name, options, clock.now())]).toEqual(['still at the rest time', true])
+    })
+  }
+
+  // The rest moment always asks for the still scene, and cancels pending wake draws: a redraw the mod asked for a
+  // moment earlier (here the wake draw 12 s after the first show, a second before the rest) does not stand in for it.
+  if (name === 'kiki') {
+    test('W-d1: kiki at a rest moment a second after a wake draw asks for one redraw, draws the still scene, and asks for nothing in the next 15 seconds', { options: options as never }, async ($, on) => {
+      const rig = await begin($, on)
+      const { clock } = rig
+      const loaded = clock.now()
+      const restAt = loaded + 5 * MIN
+      // The first show 13 s before the rest: its wake draws fall 10 s and 1 s before it.
+      await clock.set(restAt - 13_000)
+      expect(isMoving(await draw($, name), name)).toBe(true)
+      const shown = rig.redraws()
+      await clock.set(restAt - 1)
+      expect(['wake draws before the rest', rig.redraws() - shown]).toEqual(['wake draws before the rest', 2])
+      const before = rig.redraws()
+      await clock.set(restAt)
+      expect(['redraws at the rest time', rig.redraws() - before]).toEqual(['redraws at the rest time', 1])
+      expect(['still at the rest time', isRested(await draw($, name), name, options, clock.now())]).toEqual(['still at the rest time', true])
+      await clock.advance(15_000)
+      expect(['redraws in the 15 s after', rig.redraws() - before]).toEqual(['redraws in the 15 s after', 1])
+    })
   }
 
   test(`W-d1: ${name} with rest at 15 rests fifteen minutes after the last activity, not five`, { options: { ...options, rest: '15' } as never }, async ($, on) => {
@@ -486,6 +565,8 @@ test('W-d4: a theme set by another plugin while one of this mod\'s own is in fli
   expect(rig.kv.get('lookSet')).toBe(false)
   await rig.clock.advance(1000)
   await own
+  // The other plugin's set landed last, so it still decides once this mod's own has answered.
+  expect(['lookSet after the own set answers', rig.kv.get('lookSet')]).toEqual(['lookSet after the own set answers', false])
 })
 
 test('W-d4: this mod\'s own sets do not clear lookSet, also with two in flight together (pins today)', async ($, on) => {

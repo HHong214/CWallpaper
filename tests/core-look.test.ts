@@ -80,6 +80,15 @@ test('W-d3: thrown naming scene, with a look that names no scheme: the second ca
   expect('overrideColorScheme' in (r.calls[1] ?? {})).toBe(false)
 })
 
+test('W-d3: thrown naming Scene with a capital S, then answered: two calls, the second with the scene as id, no toast', async () => {
+  const r = rig([new Error('Scene refused'), { isDrawn: true }])
+  const got = await run(r.io, LOOK())
+  expect(r.calls.length).toBe(2)
+  expect(r.calls[1]).toEqual({ backdrop: { id: 'blackhole', glass: GLASS }, colors: COLORS, overrideColorScheme: 'dark' })
+  expect(r.toasts).toEqual([])
+  expect(got).toEqual({ isSet: true, why: '' })
+})
+
 test('W-d3: thrown naming scene twice: two calls, one toast, isSet false', async () => {
   const r = rig([new Error(SCENE_ERROR), new Error(SCENE_ERROR)])
   const got = await run(r.io, LOOK())
